@@ -75,10 +75,12 @@ pub trait Client {
     fn send(&mut self, bytes: &[u8]);
 }
 
+#[cfg(test)]
 struct TestClient {
     msgs: Vec<Vec<u8>>,
 }
 
+#[cfg(test)]
 impl TestClient {
     fn new() -> Self {
         TestClient { msgs: vec!() }
@@ -96,6 +98,7 @@ impl TestClient {
     }
 }
 
+#[cfg(test)]
 impl Client for TestClient {
     fn send(&mut self, bytes: &[u8]) {
         self.msgs.push(bytes.to_vec());
