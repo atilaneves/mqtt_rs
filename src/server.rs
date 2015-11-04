@@ -46,6 +46,34 @@ impl Server {
     }
 }
 
+struct Stream {
+    buffer: Vec<u8>,
+    bytes_start: usize,
+}
+
+impl Stream {
+    pub fn new() -> Self {
+        Stream { buffer: vec![0; 1024], bytes_start: 0 }
+    }
+
+    pub fn buffer(&mut self) -> &mut Vec<u8> {
+        &mut self.buffer
+    }
+
+    pub fn handle_messages<C: Client>(&mut self, bytes_read: usize, server: &mut Server, client: &mut C) {
+        let mut slice = &self.buffer[self.bytes_start .. self.bytes_start + bytes_read];
+        let mut total_len = 2;
+        while slice.len() >= total_len {
+            total_len = message::remaining_length(slice) + 2; //2 for fixed header size
+            let msg = &slice[0 .. total_len];
+            slice = &slice[total_len..];
+            server.new_message(client, msg);
+        }
+    }
+}
+
+
+
 pub trait Client {
     fn send(&mut self, bytes: &[u8]);
 }
@@ -61,6 +89,13 @@ impl TestClient {
 
     fn last_msg(&self) -> &[u8] {
         self.msgs.last().unwrap()
+    }
+
+    fn read(&self, buffer: &mut [u8], bytes: &[u8]) -> usize {
+        for i in 0..bytes.len() {
+            buffer[i] = bytes[i];
+        }
+        bytes.len()
     }
 }
 
@@ -113,10 +148,11 @@ fn test_pings_all_at_once() {
 
     let mut server = Server::new();
     let mut client = TestClient::new();
+    let mut stream = Stream::new();
 
-    server.new_bytes(&mut client, ping_bytes);
+    let bytes_read = client.read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
 
-    assert_eq!(client.last_msg(), &PING_RESP);
     assert_eq!(client.msgs.len(), 4);
     for msg in client.msgs {
         assert_eq!(msg, &PING_RESP);
@@ -129,10 +165,17 @@ fn test_pings_multiple_time_unbroken() {
 
     let mut server = Server::new();
     let mut client = TestClient::new();
+    let mut stream = Stream::new();
 
-    server.new_bytes(&mut client, ping_bytes);
+    let bytes_read = client.read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
     assert_eq!(client.msgs.len(), 2);
 
-    server.new_bytes(&mut client, ping_bytes);
+    let bytes_read = client.read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
     assert_eq!(client.msgs.len(), 4);
+
+    for msg in client.msgs {
+        assert_eq!(msg, &PING_RESP);
+    }
 }
