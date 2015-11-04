@@ -1,3 +1,4 @@
+@wip
 Feature: Disconnect
   As an MQTT client,
   I want to be able to disconnect cleanly
