@@ -179,3 +179,34 @@ fn test_pings_multiple_time_unbroken() {
         assert_eq!(msg, &PING_RESP);
     }
 }
+
+
+#[test]
+fn test_pings_broken() {
+    let ping_fst = &[0xc0u8][0..];
+    let ping_snd = &[0u8][0..];
+
+    let mut server = Server::new();
+    let mut client = TestClient::new();
+    let mut stream = Stream::new();
+
+    let bytes_read = client.read(stream.buffer(), ping_fst);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+    assert_eq!(client.msgs.len(), 0);
+
+    let bytes_read = client.read(stream.buffer(), ping_snd);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+    assert_eq!(client.msgs.len(), 1);
+
+    let bytes_read = client.read(stream.buffer(), ping_fst);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+    assert_eq!(client.msgs.len(), 1);
+
+    let bytes_read = client.read(stream.buffer(), ping_snd);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+    assert_eq!(client.msgs.len(), 2);
+
+    for msg in client.msgs {
+        assert_eq!(msg, &PING_RESP);
+    }
+}
