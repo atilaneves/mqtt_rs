@@ -1,0 +1,9 @@
+language: rust
+install:
+  - gem install bundler
+  - bundle install
+
+script:
+  - cargo test
+  - cargo build
+  - cucumber --tags ~@wip
