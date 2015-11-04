@@ -27,21 +27,20 @@ fn main() {
     let server = Arc::new(Mutex::new(server::Server::new()));
     let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
 
-    for stream in listener.incoming() {
+    for byte_stream in listener.incoming() {
         let server = server.clone();
-        let mut buffer = vec![0u8; 1024];
+        let mut mqtt_stream = server::Stream::new();
 
         thread::spawn(move || {
-            let mut stream = stream.unwrap();
+            let mut byte_stream = byte_stream.unwrap();
             loop {
-                let read_result = stream.read(&mut buffer);
-                let mut client = TcpClient::new(&mut stream);
+                let read_result = byte_stream.read(mqtt_stream.buffer());
+                let mut client = TcpClient::new(&mut byte_stream);
 
                 match read_result {
                     Ok(length) => {
-                        let message_bytes = &buffer[0..length];
                         let mut server = server.lock().unwrap();
-                        server.new_message(&mut client, message_bytes);
+                        mqtt_stream.handle_messages(length, &mut server, &mut client);
                     },
                     _ => panic!("Error reading bytes from stream"),
                 }
