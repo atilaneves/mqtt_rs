@@ -17,22 +17,23 @@ impl<'a> TcpClient<'a> {
     }
 }
 
-impl<'a> server::Client<'a> for TcpClient<'a> {
-    fn send(&mut self, bytes: &'a [u8]) {
+impl<'a> server::Client for TcpClient<'a> {
+    fn send(&mut self, bytes: &[u8]) {
         let _ = self.stream.write(bytes);
     }
 }
 
 fn main() {
     let server = Arc::new(Mutex::new(server::Server::new()));
-
     let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
+
     for stream in listener.incoming() {
         let server = server.clone();
+        let mut buffer = vec![0u8; 1024];
+
         thread::spawn(move || {
             let mut stream = stream.unwrap();
             loop {
-                let mut buffer = vec![0u8; 1024];
                 let read_result = stream.read(&mut buffer);
                 let mut client = TcpClient::new(&mut stream);
 

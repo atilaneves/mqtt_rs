@@ -1,19 +1,21 @@
 use message;
 
+
 pub struct Server {
     id: i32,
 }
 
+
 static CONNACK_OK : [u8; 4] = [32, 2, 0, 0];
 static PING_RESP : [u8; 2] = [0xd0, 0];
+
 
 impl Server {
     pub fn new() -> Self {
         Server { id: 4 }
     }
 
-    pub fn new_message<'a, C: Client<'a>>(&mut self, client: &mut C, bytes: &'a [u8]) {
-        println!("Server #{}", self.id);
+    pub fn new_message<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
         let message_type = message::message_type(bytes);
         match message_type {
             message::MqttType::Connect => {
@@ -27,23 +29,27 @@ impl Server {
     }
 }
 
-pub trait Client<'a> {
-    fn send(&mut self, bytes: &'a [u8]);
+pub trait Client {
+    fn send(&mut self, bytes: &[u8]);
 }
 
-struct TestClient<'a> {
-    last_msg: &'a [u8],
+struct TestClient {
+    msgs: Vec<Vec<u8>>,
 }
 
-impl<'a> TestClient<'a> {
+impl TestClient {
     fn new() -> Self {
-        TestClient { last_msg: &[] }
+        TestClient { msgs: vec!() }
+    }
+
+    fn last_msg(&self) -> &[u8] {
+        self.msgs.last().unwrap()
     }
 }
 
-impl<'a> Client<'a> for TestClient<'a> {
-    fn send(&mut self, bytes: &'a [u8]) {
-        self.last_msg = bytes;
+impl Client for TestClient {
+    fn send(&mut self, bytes: &[u8]) {
+        self.msgs.push(bytes.to_vec());
     }
 }
 
@@ -67,7 +73,7 @@ fn test_connect() {
     let mut client = TestClient::new();
 
     server.new_message(&mut client, connect_bytes);
-    assert_eq!(client.last_msg, &CONNACK_OK);
+    assert_eq!(client.last_msg(), &CONNACK_OK);
 }
 
 
@@ -80,5 +86,18 @@ fn test_ping() {
 
     server.new_message(&mut client, ping_bytes);
 
-    assert_eq!(client.last_msg, &PING_RESP);
+    assert_eq!(client.last_msg(), &PING_RESP);
 }
+
+
+// #[test]
+// fn test_pings() {
+//     let ping_bytes =  &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
+
+//     let mut server = Server::new();
+//     let mut client = TestClient::new();
+
+//     server.new_bytes(&mut client, ping_bytes);
+
+//     assert_eq!(client.last_msg(), &PING_RESP);
+// }
