@@ -10,7 +10,7 @@ pub enum MqttType {
     // PubRec = 5,
     // PubRel = 6,
     // PubComp = 7,
-    // Subscribe = 8,
+    Subscribe = 8,
     // SubAck = 9,
     // Unsubscribe = 0xa,
     // UnsubAck = 0xb,
@@ -98,4 +98,15 @@ fn msg_lens() {
     assert_eq!(remaining_length(&[0x12, 0xc1, 0x02]), 321);
     assert_eq!(remaining_length(&[0x12, 0x83, 0x02]), 259);
     //assert_eq!(remaining_length(&[0x12, 0x85, 0x80, 0x01]), 2097157);
+}
+
+
+pub fn subscribe_msg_id(bytes: &[u8]) -> u16 {
+    bytes[3] as u16
+}
+
+#[test]
+fn subscribe_msg_id_happy() {
+    assert_eq!(subscribe_msg_id(&[0x8cu8, 3, 0, 33]), 33);
+    assert_eq!(subscribe_msg_id(&[0x8cu8, 3, 0, 21]), 21);
 }

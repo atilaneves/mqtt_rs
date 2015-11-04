@@ -17,12 +17,18 @@ impl Server {
 
     fn new_message<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
         let message_type = message::message_type(bytes);
+        println!("Well...");
         match message_type {
             message::MqttType::Connect => {
                 client.send(&CONNACK_OK);
             },
             message::MqttType::PingReq => {
                 client.send(&PING_RESP);
+            },
+            message::MqttType::Subscribe => {
+                let msg_id = message::subscribe_msg_id(bytes);
+                let qos: u8 = 0;
+                client.send(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
             },
             _ => panic!("Unknown message type")
         }
@@ -209,4 +215,42 @@ fn test_pings_broken() {
     for msg in client.msgs {
         assert_eq!(msg, &PING_RESP);
     }
+}
+
+#[cfg(test)]
+fn string_to_bytes(s: &str) -> Vec<u8> {
+    let mut vec: Vec<u8> = vec![];
+    for c in s.chars() {
+        vec.push(c as u8);
+    }
+    vec
+}
+
+#[cfg(test)]
+fn subscribe_bytes(topic: &str, msg_id: u16) -> Vec<u8> {
+    let mut fixed_header = [0x8cu8, 5 + topic.len() as u8].to_vec();
+    let mut msg_part = vec![0, msg_id as u8];
+    let mut topic_header = vec![0, topic.len() as u8];
+    let mut string_bytes = string_to_bytes(topic);
+    let mut bytes = vec![];
+    bytes.append(&mut fixed_header);
+    bytes.append(&mut msg_part);
+    bytes.append(&mut topic_header);
+    bytes.append(&mut string_bytes);
+    bytes.push(0u8); //qos
+    bytes
+}
+
+#[test]
+fn test_subscribe() {
+    let subscribe_bytes = &subscribe_bytes("topic", 42)[..];
+    let qos: u8 = 0;
+    let suback_bytes = &[0x90u8, 3, 0, 42, qos][..];
+
+    let mut server = Server::new();
+    let mut client = TestClient::new();
+    let mut stream = Stream::new();
+    let bytes_read = client.read(stream.buffer(), &subscribe_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+    assert_eq!(client.last_msg(), suback_bytes);
 }
