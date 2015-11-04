@@ -1,31 +1,40 @@
+use message;
+
 struct Server {
-    dummy: i32,
+    id: i32,
 }
 
 static CONNACK_OK : [u8; 4] = [32, 2, 0, 0];
+static PING_RESP : [u8; 2] = [0xd0, 0];
 
 impl Server {
     fn new() -> Self {
-        Server { dummy: 5 }
+        Server { id: 4 }
     }
 
-    fn new_client(&mut self, client: &MqttConnection) {
+    fn new_message(&mut self, client: &mut Client, bytes: &[u8]) {
+        println!("Server #{}", self.id);
+        let message_type = message::message_type(bytes);
+        match message_type {
+            message::MqttType::Connect => {
+                client.send(&CONNACK_OK);
+            },
+            message::MqttType::PingReq => {
+                client.send(&PING_RESP);
+            },
+            _ => panic!("Unknown message type")
+        }
     }
-
-    fn new_message(&mut self, client: &mut MqttConnection, bytes: &[u8]) {
-        client.send(&CONNACK_OK)
-    }
-
 }
 
 
-struct MqttConnection<'a> {
+struct Client<'a> {
     last_msg: &'a [u8],
 }
 
-impl<'a> MqttConnection<'a> {
+impl<'a> Client<'a> {
     fn new() -> Self {
-        MqttConnection { last_msg: &[] }
+        Client { last_msg: &[] }
     }
 
     fn send(&mut self, bytes: &'a [u8]) {
@@ -37,8 +46,7 @@ impl<'a> MqttConnection<'a> {
 #[test]
 fn test_connect() {
     let mut server = Server::new();
-    let mut client = MqttConnection::new();
-    server.new_client(&client);
+    let mut client = Client::new();
 
     let connect_bytes = &[
         0x10u8, 0x2a, // fixed header
@@ -54,5 +62,17 @@ fn test_connect() {
         ][0..];
 
     server.new_message(&mut client, connect_bytes);
-    assert_eq!(client.last_msg, &[32, 2, 0, 0]);
+    assert_eq!(client.last_msg, &CONNACK_OK);
+}
+
+
+#[test]
+fn test_ping() {
+    let mut server = Server::new();
+    let mut client = Client::new();
+
+    let ping_bytes =  &[0xc0u8, 0][0..];
+    server.new_message(&mut client, ping_bytes);
+
+    assert_eq!(client.last_msg, &PING_RESP);
 }
