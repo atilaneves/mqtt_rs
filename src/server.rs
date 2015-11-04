@@ -1,6 +1,6 @@
 use message;
 
-struct Server {
+pub struct Server {
     id: i32,
 }
 
@@ -8,11 +8,11 @@ static CONNACK_OK : [u8; 4] = [32, 2, 0, 0];
 static PING_RESP : [u8; 2] = [0xd0, 0];
 
 impl Server {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Server { id: 4 }
     }
 
-    fn new_message(&mut self, client: &mut Client, bytes: &[u8]) {
+    pub fn new_message<'a, C: Client<'a>>(&mut self, client: &mut C, bytes: &'a [u8]) {
         println!("Server #{}", self.id);
         let message_type = message::message_type(bytes);
         match message_type {
@@ -27,16 +27,21 @@ impl Server {
     }
 }
 
+pub trait Client<'a> {
+    fn send(&mut self, bytes: &'a [u8]);
+}
 
-struct Client<'a> {
+struct TestClient<'a> {
     last_msg: &'a [u8],
 }
 
-impl<'a> Client<'a> {
+impl<'a> TestClient<'a> {
     fn new() -> Self {
-        Client { last_msg: &[] }
+        TestClient { last_msg: &[] }
     }
+}
 
+impl<'a> Client<'a> for TestClient<'a> {
     fn send(&mut self, bytes: &'a [u8]) {
         self.last_msg = bytes;
     }
@@ -45,9 +50,6 @@ impl<'a> Client<'a> {
 
 #[test]
 fn test_connect() {
-    let mut server = Server::new();
-    let mut client = Client::new();
-
     let connect_bytes = &[
         0x10u8, 0x2a, // fixed header
         0x00, 0x06, 'M' as u8, 'Q' as u8, 'I' as u8, 's' as u8, 'd' as u8, 'p' as u8,
@@ -61,6 +63,9 @@ fn test_connect() {
         0x00, 0x02, 'p' as u8, 'w' as u8, // password
         ][0..];
 
+    let mut server = Server::new();
+    let mut client = TestClient::new();
+
     server.new_message(&mut client, connect_bytes);
     assert_eq!(client.last_msg, &CONNACK_OK);
 }
@@ -68,10 +73,11 @@ fn test_connect() {
 
 #[test]
 fn test_ping() {
-    let mut server = Server::new();
-    let mut client = Client::new();
-
     let ping_bytes =  &[0xc0u8, 0][0..];
+
+    let mut server = Server::new();
+    let mut client = TestClient::new();
+
     server.new_message(&mut client, ping_bytes);
 
     assert_eq!(client.last_msg, &PING_RESP);
