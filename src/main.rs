@@ -10,8 +10,8 @@ fn main() {
     let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
     for stream in listener.incoming() {
         thread::spawn(|| {
-            {
-                let mut stream = stream.unwrap();
+            let mut stream = stream.unwrap();
+            loop {
                 let mut buffer = vec![0u8; 1024];
                 let read_result = stream.read(&mut buffer);
 
