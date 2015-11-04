@@ -51,7 +51,7 @@ fn ping_type() {
 }
 
 
-pub fn remaining_length(bytes: &[u8]) -> i32 {
+pub fn remaining_length(bytes: &[u8]) -> usize {
     if bytes.len() < 2 {
         return 0;
     }
@@ -59,9 +59,9 @@ pub fn remaining_length(bytes: &[u8]) -> i32 {
     let bytes = &bytes[1..]; //skip half of the fixed header
 
     //algorithm straight from the MQTT spec
-    let mut multiplier: i32 = 1;
-    let mut value: i32 = 0;
-    let mut digit: i32 = bytes[0] as i32;
+    let mut multiplier: usize = 1;
+    let mut value: usize = 0;
+    let mut digit: usize = bytes[0] as usize;
 
     loop { // do-while would be cleaner...
         value += (digit & 127) * multiplier;
@@ -72,7 +72,7 @@ pub fn remaining_length(bytes: &[u8]) -> i32 {
         }
 
         if bytes.len() > 1 {
-            digit = bytes[1..][0] as i32;
+            digit = bytes[1..][0] as usize;
         }
     }
 

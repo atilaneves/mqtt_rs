@@ -29,7 +29,20 @@ impl Server {
     }
 
     pub fn new_bytes<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
-        self.new_message(client, bytes);
+        let mut slice = bytes;
+
+        while slice.len() > 0 {
+            let remaining_len = message::remaining_length(bytes);
+            let total_len = remaining_len + 2;
+
+            if slice.len() >= total_len {
+                let msg = &slice[0 .. total_len];
+                slice = &slice[total_len ..];
+                self.new_message(client, msg);
+            } else {
+                slice = &[];
+            }
+        }
     }
 }
 
