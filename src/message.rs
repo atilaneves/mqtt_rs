@@ -23,9 +23,8 @@ pub fn message_type(bytes: &[u8]) -> MqttType {
     unsafe { mem::transmute((bytes[0] & 0xf0) >> 4) }
 }
 
-#[test]
-fn connect_type() {
-    let connect_bytes = &[
+fn connect_bytes() -> Vec<u8> {
+    vec!(
         0x10u8, 0x2a, // fixed header
         0x00, 0x06, 'M' as u8, 'Q' as u8, 'I' as u8, 's' as u8, 'd' as u8, 'p' as u8,
         0x03, // protocol version
@@ -36,12 +35,33 @@ fn connect_type() {
         0x00, 0x04, 'w' as u8, 'm' as u8, 's' as u8, 'g' as u8, // will msg
         0x00, 0x07, 'g' as u8, 'l' as u8, 'i' as u8, 'f' as u8, 't' as u8, 'e' as u8, 'l' as u8, // username
         0x00, 0x02, 'p' as u8, 'w' as u8, // password
-        ][0..];
-    assert_eq!(message_type(connect_bytes), MqttType::Connect);
+        )
+}
+
+#[test]
+fn connect_type() {
+    let connect_bytes = connect_bytes();
+    assert_eq!(message_type(&connect_bytes), MqttType::Connect);
 }
 
 #[test]
 fn ping_type() {
     let ping_bytes = &[0xc0u8, 0][0..];
     assert_eq!(message_type(ping_bytes), MqttType::PingReq);
+}
+
+
+pub fn remaining_length(bytes: &[u8]) -> i32 {
+    42
+}
+
+#[test]
+fn connect_len() {
+    assert_eq!(remaining_length(&connect_bytes()), 42);
+}
+
+#[test]
+fn ping_len() {
+    let ping_bytes = &[0xc0u8, 0][0..];
+    assert_eq!(remaining_length(&ping_bytes), 0);
 }
