@@ -7,7 +7,7 @@ fn main() {
     for stream in listener.incoming() {
         thread::spawn(|| {
             let mut stream = stream.unwrap();
-            stream.write(b"Hello world\r\n").unwrap();
+            stream.write(&[32, 2, 0, 0]).unwrap();
         });
     }
 }
