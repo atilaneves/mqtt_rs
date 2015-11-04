@@ -1,6 +1,7 @@
 language: rust
 install:
-  - gem install cucumber
+  - gem install bundler
+  - bundle install
 
 script:
   - cargo test
