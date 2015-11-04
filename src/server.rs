@@ -108,7 +108,7 @@ fn test_ping() {
 
 
 #[test]
-fn test_pings() {
+fn test_pings_all_at_once() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
 
     let mut server = Server::new();
@@ -121,5 +121,18 @@ fn test_pings() {
     for msg in client.msgs {
         assert_eq!(msg, &PING_RESP);
     }
+}
 
+#[test]
+fn test_pings_multiple_time_unbroken() {
+    let ping_bytes = &[0xc0u8, 0, 0xc0, 0][0..];
+
+    let mut server = Server::new();
+    let mut client = TestClient::new();
+
+    server.new_bytes(&mut client, ping_bytes);
+    assert_eq!(client.msgs.len(), 2);
+
+    server.new_bytes(&mut client, ping_bytes);
+    assert_eq!(client.msgs.len(), 4);
 }
