@@ -5,6 +5,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 
 mod server;
+mod broker;
 mod message;
 
 struct TcpClient<'a> {
