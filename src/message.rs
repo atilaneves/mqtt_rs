@@ -52,7 +52,31 @@ fn ping_type() {
 
 
 pub fn remaining_length(bytes: &[u8]) -> i32 {
-    42
+    if bytes.len() < 2 {
+        return 0;
+    }
+
+    let bytes = &bytes[1..]; //skip half of the fixed header
+
+    //algorithm straight from the MQTT spec
+    let mut multiplier: i32 = 1;
+    let mut value: i32 = 0;
+    let mut digit: i32 = bytes[0] as i32;
+
+    loop { // do-while would be cleaner...
+        value += (digit & 127) * multiplier;
+        multiplier *= 128;
+
+        if (digit & 128) == 0 {
+            break;
+        }
+
+        if bytes.len() > 1 {
+            digit = bytes[1..][0] as i32;
+        }
+    }
+
+    value
 }
 
 #[test]
@@ -64,4 +88,14 @@ fn connect_len() {
 fn ping_len() {
     let ping_bytes = &[0xc0u8, 0][0..];
     assert_eq!(remaining_length(&ping_bytes), 0);
+}
+
+#[test]
+fn msg_lens() {
+    assert_eq!(remaining_length(&[]), 0);
+    assert_eq!(remaining_length(&[0x15, 5]), 5);
+    assert_eq!(remaining_length(&[0x27, 7]), 7);
+    assert_eq!(remaining_length(&[0x12, 0xc1, 0x02]), 321);
+    assert_eq!(remaining_length(&[0x12, 0x83, 0x02]), 259);
+    //assert_eq!(remaining_length(&[0x12, 0x85, 0x80, 0x01]), 2097157);
 }
