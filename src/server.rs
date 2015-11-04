@@ -17,7 +17,6 @@ impl Server {
 
     fn new_message<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
         let message_type = message::message_type(bytes);
-        println!("Well...");
         match message_type {
             message::MqttType::Connect => {
                 client.send(&CONNACK_OK);
@@ -36,8 +35,6 @@ impl Server {
 }
 
 pub struct Stream {
-    //the reason there's bytes_start and bytes_read is because bytes_read always grows,
-    //but bytes_start only moves if full messages have been processed
     buffer: Vec<u8>,
     bytes_start: usize, //the start of the next byte window
 }
