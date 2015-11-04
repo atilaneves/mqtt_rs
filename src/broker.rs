@@ -97,7 +97,7 @@ impl Subscriber for TestSubscriber {
 }
 
 #[test]
-fn no_subscriptions() {
+fn test_subscribe() {
     let mut broker = Broker::<TestSubscriber>::new();
     let sub_ref = Rc::new(RefCell::new(TestSubscriber::new(42)));
     let subscriber = sub_ref.clone();
