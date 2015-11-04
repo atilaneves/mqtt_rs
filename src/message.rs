@@ -1,6 +1,7 @@
 #[derive(PartialEq, Debug)]
 enum MqttType {
     Connect,
+    Ping,
 }
 
 fn message_type(bytes: &[u8]) -> MqttType {
@@ -9,7 +10,7 @@ fn message_type(bytes: &[u8]) -> MqttType {
 
 #[test]
 fn connect_type() {
-    let mqtt_connect = &[
+    let connect_bytes = &[
         0x10u8, 0x2a, // fixed header
         0x00, 0x06, 'M' as u8, 'Q' as u8, 'I' as u8, 's' as u8, 'd' as u8, 'p' as u8,
         0x03, // protocol version
@@ -21,5 +22,11 @@ fn connect_type() {
         0x00, 0x07, 'g' as u8, 'l' as u8, 'i' as u8, 'f' as u8, 't' as u8, 'e' as u8, 'l' as u8, // username
         0x00, 0x02, 'p' as u8, 'w' as u8, // password
         ][0..];
-    assert_eq!(message_type(mqtt_connect), MqttType::Connect);
+    assert_eq!(message_type(connect_bytes), MqttType::Connect);
+}
+
+#[test]
+fn ping_type() {
+    let ping_bytes = &[0xc0u8, 0][0..];
+    assert_eq!(message_type(ping_bytes), MqttType::Ping);
 }
