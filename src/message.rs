@@ -1,7 +1,7 @@
 use std::mem;
 
 #[derive(PartialEq, Debug)]
-enum MqttType {
+pub enum MqttType {
     Reserved = 0,
     Connect,
     ConnAck,
@@ -19,7 +19,7 @@ enum MqttType {
     Disconnect,
 }
 
-fn message_type(bytes: &[u8]) -> MqttType {
+pub fn message_type(bytes: &[u8]) -> MqttType {
     unsafe { mem::transmute((bytes[0] & 0xf0) >> 4) }
 }
 

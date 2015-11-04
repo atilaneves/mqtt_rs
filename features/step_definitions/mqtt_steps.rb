@@ -210,7 +210,7 @@ When(/^I send a PINGREQ MQTT message$/) do
   @clients[0].send_mqtt_ping_req
 end
 
-Then(/^I should receive a PINGREQP MQTT message$/) do
+Then(/^I should receive a PINGRESP MQTT message$/) do
   @clients[0].expect_mqtt_ping_resp
 end
 

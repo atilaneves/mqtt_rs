@@ -6,4 +6,4 @@ Feature: Ping
   Scenario: Ping
     Given I have connected to the broker on port 1883
     When I send a PINGREQ MQTT message
-    Then I should receive a PINGREQP MQTT message
+    Then I should receive a PINGRESP MQTT message
