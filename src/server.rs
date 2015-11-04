@@ -27,6 +27,10 @@ impl Server {
             _ => panic!("Unknown message type")
         }
     }
+
+    pub fn new_bytes<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
+        self.new_message(client, bytes);
+    }
 }
 
 pub trait Client {
@@ -90,14 +94,19 @@ fn test_ping() {
 }
 
 
-// #[test]
-// fn test_pings() {
-//     let ping_bytes =  &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
+#[test]
+fn test_pings() {
+    let ping_bytes = &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
 
-//     let mut server = Server::new();
-//     let mut client = TestClient::new();
+    let mut server = Server::new();
+    let mut client = TestClient::new();
 
-//     server.new_bytes(&mut client, ping_bytes);
+    server.new_bytes(&mut client, ping_bytes);
 
-//     assert_eq!(client.last_msg(), &PING_RESP);
-// }
+    assert_eq!(client.last_msg(), &PING_RESP);
+    assert_eq!(client.msgs.len(), 4);
+    for msg in client.msgs {
+        assert_eq!(msg, &PING_RESP);
+    }
+
+}
