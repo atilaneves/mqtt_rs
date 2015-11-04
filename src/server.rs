@@ -47,31 +47,42 @@ impl Server {
 }
 
 struct Stream {
+    //the reason there's bytes_start and bytes_read is because bytes_read always grows,
+    //but bytes_start only moves if full messages have been processed
     buffer: Vec<u8>,
-    bytes_start: usize,
+    bytes_start: usize, //the start of the next byte window
+    bytes_read: usize,  //bytes read so far
 }
 
 impl Stream {
     pub fn new() -> Self {
-        Stream { buffer: vec![0; 1024], bytes_start: 0 }
+        Stream { buffer: vec![0; 1024], bytes_start: 0, bytes_read: 0 }
     }
 
-    pub fn buffer(&mut self) -> &mut Vec<u8> {
-        &mut self.buffer
+    pub fn buffer(&mut self) -> &mut [u8] {
+        &mut self.buffer[self.bytes_read .. ]
     }
 
     pub fn handle_messages<C: Client>(&mut self, bytes_read: usize, server: &mut Server, client: &mut C) {
-        let mut slice = &self.buffer[self.bytes_start .. self.bytes_start + bytes_read];
-        let mut total_len = 2;
+        let mut slice = &self.buffer[self.bytes_start .. self.bytes_read + bytes_read];
+        const HEADER_LEN: usize = 2;
+        let mut total_len = HEADER_LEN;
         while slice.len() >= total_len {
-            total_len = message::remaining_length(slice) + 2; //2 for fixed header size
+            total_len = message::remaining_length(slice) + HEADER_LEN;
             let msg = &slice[0 .. total_len];
             slice = &slice[total_len..];
+            self.bytes_start += total_len;
             server.new_message(client, msg);
         }
+
+        // //shift everything to the beginning of the buffer
+        // for i in 0..slice.len() {
+        //     self.buffer[i] = slice[i];
+        // }
+
+        self.bytes_read += bytes_read;
     }
 }
-
 
 
 pub trait Client {
