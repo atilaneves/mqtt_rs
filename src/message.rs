@@ -1,11 +1,26 @@
+use std::mem;
+
 #[derive(PartialEq, Debug)]
 enum MqttType {
+    Reserved = 0,
     Connect,
-    Ping,
+    ConnAck,
+    Publish,
+    PubAck,
+    PubRec,
+    PubRel,
+    PubComp,
+    Subscribe,
+    SubAck,
+    Unsubscribe,
+    UnsubAck,
+    PingReq,
+    PingResp,
+    Disconnect,
 }
 
 fn message_type(bytes: &[u8]) -> MqttType {
-    MqttType::Connect
+    unsafe { mem::transmute((bytes[0] & 0xf0) >> 4) }
 }
 
 #[test]
@@ -28,5 +43,5 @@ fn connect_type() {
 #[test]
 fn ping_type() {
     let ping_bytes = &[0xc0u8, 0][0..];
-    assert_eq!(message_type(ping_bytes), MqttType::Ping);
+    assert_eq!(message_type(ping_bytes), MqttType::PingReq);
 }
