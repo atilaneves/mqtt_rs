@@ -87,11 +87,9 @@ impl Subscriber for TestSubscriber {
     fn append_topics(&mut self, topics: &[&str]) {
         let mut new_topics = topics.to_vec().into_iter().map(|t| t.to_string()).collect();
         self.topics.append(&mut new_topics);
-        println!("after append, len is {}", self.topics.len());
     }
 
     fn topics(&self) -> Vec<String> {
-        println!("self topics len: {}", self.topics.len());
         self.topics.clone()
     }
 }
