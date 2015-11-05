@@ -36,6 +36,7 @@ fn main() {
             let mut byte_stream = byte_stream.unwrap();
             loop {
                 let read_result = byte_stream.read(mqtt_stream.buffer());
+                //the client must be created here due to scoping issues with byte_stream
                 let mut client = TcpClient::new(&mut byte_stream);
 
                 match read_result {
