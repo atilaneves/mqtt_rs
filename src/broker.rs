@@ -1,5 +1,6 @@
 use std::rc::{Rc};
 use std::cell::{RefCell};
+use std::mem::{transmute};
 
 
 pub struct Broker<T: Subscriber> {
@@ -63,13 +64,12 @@ pub trait Subscriber {
 #[cfg(test)]
 struct TestSubscriber {
     msgs: Vec<Vec<u8>>,
-    id: i64,
     topics: Vec<String>,
 }
 #[cfg(test)]
 impl TestSubscriber {
-    fn new(id: i64) -> Self {
-        return TestSubscriber{msgs: vec![], id: id, topics: vec![]}
+    fn new() -> Self {
+        return TestSubscriber{msgs: vec![], topics: vec![]}
     }
 }
 
@@ -81,7 +81,7 @@ impl Subscriber for TestSubscriber {
     }
 
     fn id(&self) -> i64 {
-        return self.id;
+        self as *const TestSubscriber as i64
     }
 
     fn append_topics(&mut self, topics: &[&str]) {
@@ -99,7 +99,7 @@ impl Subscriber for TestSubscriber {
 #[test]
 fn test_subscribe() {
     let mut broker = Broker::<TestSubscriber>::new();
-    let sub_ref = Rc::new(RefCell::new(TestSubscriber::new(42)));
+    let sub_ref = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_ref.clone();
     broker.publish("topics/foo", &[0, 1, 2]);
     assert_eq!(subscriber.borrow().msgs.len(), 0);
