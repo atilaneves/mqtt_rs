@@ -113,6 +113,13 @@ impl<T: SubscriberT> SubscriptionsT<T> {
     fn new() -> Self {
         SubscriptionsT { tree: Node { children: HashMap::new(), leaves: vec![] }}
     }
+
+    fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+    }
+
+    fn publish(&self, topic: &str, payload: &[u8]) {
+
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +144,17 @@ impl SubscriberT for TestSubscriberT {
 #[test]
 fn test_subt() {
     let mut subs = SubscriptionsT::<TestSubscriberT>::new();
+    let sub_ref = Rc::new(RefCell::new(TestSubscriberT::new()));
+    let mut subscriber = sub_ref.clone();
+    subs.publish("topics/foo", &[0, 1, 2]);
+    assert_eq!(subscriber.borrow().msgs.len(), 0);
+
+    subs.subscribe(subscriber.clone(), &["topics/foo"]);
+    subs.publish("topics/foo", &[0, 1, 9]);
+    subs.publish("topics/bar", &[2, 4, 6]);
+    assert_eq!(subscriber.borrow().msgs.len(), 1);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+
 }
 
 #[cfg(test)]
