@@ -16,6 +16,11 @@ impl<T: Subscriber> Broker<T> {
     }
 
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        let subscriber = self.add_or_find(subscriber);
+        subscriber.borrow_mut().append_topics(topics);
+    }
+
+    fn add_or_find(&mut self, subscriber: Rc<RefCell<T>>) -> Rc<RefCell<T>> {
         for sub in &self.subscriptions.subscribers {
             let sub1 = sub.clone();
             let sub2 = subscriber.clone();
@@ -25,13 +30,12 @@ impl<T: Subscriber> Broker<T> {
             //it to get the to the T inside. And since is_same takes borrows, we reapply
             //the ampersand
             if is_same(&*sub1.borrow(), &*sub2.borrow()) {
-                sub2.borrow_mut().append_topics(topics);
-                return;
+                return sub2;
             }
         }
+
         self.subscriptions.subscribers.push(subscriber);
-        let last_subscriber = self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone();
-        last_subscriber.borrow_mut().append_topics(topics);
+        self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone()
     }
 }
 
