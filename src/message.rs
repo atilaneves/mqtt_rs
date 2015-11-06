@@ -2,7 +2,7 @@ use std::mem;
 
 #[derive(PartialEq, Debug)]
 pub enum MqttType {
-    Reserved = 0,
+    //Reserved = 0,
     Connect = 1,
     // ConnAck = 2,
     // Publish = 3,
@@ -48,6 +48,12 @@ fn connect_type() {
 fn ping_type() {
     let ping_bytes = &[0xc0u8, 0][0..];
     assert_eq!(message_type(ping_bytes), MqttType::PingReq);
+}
+
+#[test]
+fn subscribe_type() {
+    let subscribe_header = &[0x80, 0][0..];
+    assert_eq!(message_type(subscribe_header), MqttType::Subscribe);
 }
 
 

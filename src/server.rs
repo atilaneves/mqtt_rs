@@ -29,7 +29,6 @@ impl Server {
                 let qos: u8 = 0;
                 client.send(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
             },
-            _ => panic!("Unknown message type")
         }
     }
 }
