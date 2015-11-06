@@ -8,7 +8,7 @@ pub struct Broker<T: Subscriber> {
 
 impl<T: Subscriber> Broker<T> {
     pub fn new() -> Self {
-        Broker{ subscriptions: Subscriptions::<T>::new()}
+        Broker{ subscriptions: Subscriptions::<T>::new() }
     }
 
     pub fn publish(&mut self, topic: &str, payload: &[u8]) {
@@ -25,8 +25,8 @@ impl<T: Subscriber> Broker<T> {
             }
         }
         self.subscriptions.subscribers.push(subscriber);
-        let lesub = self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone();
-        lesub.borrow_mut().append_topics(topics);
+        let last_subscriber = self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone();
+        last_subscriber.borrow_mut().append_topics(topics);
     }
 }
 
