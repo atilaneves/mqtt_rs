@@ -1,5 +1,6 @@
 use std::rc::{Rc};
 use std::cell::{RefCell};
+use std::collections::HashMap;
 
 
 pub struct Broker<T: Subscriber> {
@@ -18,11 +19,6 @@ impl<T: Subscriber> Broker<T> {
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
         self.subscriptions.subscribe(subscriber, &topics)
     }
-}
-
-//is same identity
-fn is_same<T>(lhs: &T, rhs: &T) -> bool {
-    return lhs as *const T as i64 == rhs as *const T as i64
 }
 
 pub struct Subscriptions<T: Subscriber> {
@@ -69,6 +65,11 @@ impl<T: Subscriber> Subscriptions<T> {
     }
 }
 
+//is same identity
+fn is_same<T>(lhs: &T, rhs: &T) -> bool {
+    return lhs as *const T as i64 == rhs as *const T as i64
+}
+
 fn topic_matches(pub_topic: &str, sub_topic: &str) -> bool {
     pub_topic == sub_topic
 }
@@ -97,6 +98,45 @@ impl<T: SubscriberT> Subscription<T> {
     fn topics(&self) -> Vec<String> {
         self.topics.clone()
     }
+}
+
+struct Node<T: SubscriberT> {
+    children: HashMap<String, Box<Node<T>>>,
+    leaves: Vec<Subscription<T>>,
+}
+
+pub struct SubscriptionsT<T: SubscriberT> {
+    tree: Node<T>,
+}
+
+impl<T: SubscriberT> SubscriptionsT<T> {
+    fn new() -> Self {
+        SubscriptionsT { tree: Node { children: HashMap::new(), leaves: vec![] }}
+    }
+}
+
+#[cfg(test)]
+struct TestSubscriberT {
+    msgs: Vec<Vec<u8>>,
+}
+
+#[cfg(test)]
+impl TestSubscriberT {
+    fn new() -> Self {
+        return TestSubscriberT{msgs: vec![]}
+    }
+}
+
+#[cfg(test)]
+impl SubscriberT for TestSubscriberT {
+    fn new_message(&mut self, bytes: &[u8]) {
+        self.msgs.push(bytes.to_vec());
+    }
+}
+
+#[test]
+fn test_subt() {
+    let mut subs = SubscriptionsT::<TestSubscriberT>::new();
 }
 
 #[cfg(test)]
@@ -150,4 +190,11 @@ fn test_subscribe() {
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
     assert_eq!(subscriber.borrow().msgs[1], &[1, 3, 5, 7]);
     assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
+}
+
+
+
+#[test]
+fn test_tree() {
+
 }
