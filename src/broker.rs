@@ -19,7 +19,12 @@ impl<T: Subscriber> Broker<T> {
         for sub in &self.subscriptions.subscribers {
             let sub1 = sub.clone();
             let sub2 = subscriber.clone();
-            if sub1.borrow().id() == sub2.borrow().id() {
+            //this is horrible
+            //borrow doesn't return T, it returns Ref<T>
+            //since Ref<T> itself doesn't satisfy the template contraint, we need to deref
+            //it to get the to the T inside. And since is_same takes borrows, we reapply
+            //the ampersand
+            if is_same(&*sub1.borrow(), &*sub2.borrow()) {
                 sub2.borrow_mut().append_topics(topics);
                 return;
             }
@@ -28,6 +33,11 @@ impl<T: Subscriber> Broker<T> {
         let last_subscriber = self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone();
         last_subscriber.borrow_mut().append_topics(topics);
     }
+}
+
+//is same identity
+fn is_same<T>(lhs: &T, rhs: &T) -> bool {
+    return lhs as *const T as i64 == rhs as *const T as i64
 }
 
 pub struct Subscriptions<T: Subscriber> {
@@ -55,7 +65,6 @@ impl<T: Subscriber> Subscriptions<T> {
 
 pub trait Subscriber {
     fn new_message(&mut self, bytes: &[u8]);
-    fn id(&self) -> i64;
     fn append_topics(&mut self, topics: &[&str]);
     fn topics(&self) -> Vec<String>;
 }
@@ -79,10 +88,6 @@ impl Subscriber for TestSubscriber {
         self.msgs.push(bytes.to_vec());
     }
 
-    fn id(&self) -> i64 {
-        self as *const TestSubscriber as i64
-    }
-
     fn append_topics(&mut self, topics: &[&str]) {
         let mut new_topics = topics.to_vec().into_iter().map(|t| t.to_string()).collect();
         self.topics.append(&mut new_topics);
@@ -92,6 +97,7 @@ impl Subscriber for TestSubscriber {
         self.topics.clone()
     }
 }
+
 
 #[test]
 fn test_subscribe() {
