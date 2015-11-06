@@ -16,26 +16,7 @@ impl<T: Subscriber> Broker<T> {
     }
 
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
-        let subscriber = self.add_or_find(subscriber);
-        subscriber.borrow_mut().append_topics(topics);
-    }
-
-    fn add_or_find(&mut self, subscriber: Rc<RefCell<T>>) -> Rc<RefCell<T>> {
-        for sub in &self.subscriptions.subscribers {
-            let sub1 = sub.clone();
-            let sub2 = subscriber.clone();
-            //this is horrible
-            //borrow doesn't return T, it returns Ref<T>
-            //since Ref<T> itself doesn't satisfy the template contraint, we need to deref
-            //it to get the to the T inside. And since is_same takes borrows, we reapply
-            //the ampersand
-            if is_same(&*sub1.borrow(), &*sub2.borrow()) {
-                return sub2;
-            }
-        }
-
-        self.subscriptions.subscribers.push(subscriber);
-        self.subscriptions.subscribers[self.subscriptions.subscribers.len() - 1].clone()
+        self.subscriptions.subscribe(subscriber, &topics)
     }
 }
 
@@ -53,24 +34,69 @@ impl<T: Subscriber> Subscriptions<T> {
         return Subscriptions { subscribers: vec![], }
     }
 
-    fn publish(&mut self, topic: &str, payload: &[u8]) {
-        for s in &mut self.subscribers {
-            let sub_clone = s.clone();
-            let mut s = sub_clone.borrow_mut();
+    fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        let subscriber = self.add_or_find(subscriber);
+        subscriber.borrow_mut().append_topics(topics);
+    }
 
-            for t in s.topics() {
-                if t == topic {
-                    s.new_message(payload);
-                }
+    fn add_or_find(&mut self, subscriber: Rc<RefCell<T>>) -> Rc<RefCell<T>> {
+        for sub in &self.subscribers {
+            let sub1 = sub.clone();
+            let sub2 = subscriber.clone();
+            //this is horrible
+            //borrow doesn't return T, it returns Ref<T>
+            //since Ref<T> itself doesn't satisfy the template contraint, we need to deref
+            //it to get the to the T inside. And since is_same takes borrows, we reapply
+            //the ampersand
+            if is_same(&*sub1.borrow(), &*sub2.borrow()) {
+                return sub2;
+            }
+        }
+
+        self.subscribers.push(subscriber);
+        self.subscribers[self.subscribers.len() - 1].clone()
+    }
+
+    fn publish(&mut self, topic: &str, payload: &[u8]) {
+        for subscriber in &mut self.subscribers {
+            let subscriber = subscriber.clone();
+            let mut subscriber = subscriber.borrow_mut();
+
+            for _ in subscriber.topics().iter().filter(|&t| topic_matches(&topic, &t)) {
+                subscriber.new_message(payload);
             }
         }
     }
+}
+
+fn topic_matches(pub_topic: &str, sub_topic: &str) -> bool {
+    pub_topic == sub_topic
 }
 
 pub trait Subscriber {
     fn new_message(&mut self, bytes: &[u8]);
     fn append_topics(&mut self, topics: &[&str]);
     fn topics(&self) -> Vec<String>;
+}
+
+pub trait SubscriberT {
+    fn new_message(&mut self, bytes: &[u8]);
+}
+
+struct Subscription<T: SubscriberT> {
+    subscriber: Rc<RefCell<T>>,
+    topics: Vec<String>,
+}
+
+impl<T: SubscriberT> Subscription<T> {
+    fn append_topics(&mut self, topics: &[&str]) {
+        let mut new_topics = topics.to_vec().into_iter().map(|t| t.to_string()).collect();
+        self.topics.append(&mut new_topics);
+    }
+
+    fn topics(&self) -> Vec<String> {
+        self.topics.clone()
+    }
 }
 
 #[cfg(test)]
