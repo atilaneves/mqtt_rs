@@ -105,16 +105,32 @@ struct Node<T: SubscriberT> {
     leaves: Vec<Subscription<T>>,
 }
 
+impl<T: SubscriberT> Node<T> {
+    pub fn new() -> Self {
+        Node { children: HashMap::new(), leaves: vec![] }
+    }
+}
+
 pub struct SubscriptionsT<T: SubscriberT> {
     tree: Node<T>,
 }
 
 impl<T: SubscriberT> SubscriptionsT<T> {
     pub fn new() -> Self {
-        SubscriptionsT { tree: Node { children: HashMap::new(), leaves: vec![] }}
+        SubscriptionsT { tree: Node::new() }
     }
 
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        for topic in topics {
+            let topParts : Vec<&str> = topic.split("/").collect();
+            println!("topParts: ");
+            for part in &topParts {
+                print!("{}, ", part)
+            }
+            println!("");
+
+            self.tree.children.insert("part".to_string(), Box::new(Node::new()));
+        }
     }
 
     pub fn publish(&self, topic: &str, payload: &[u8]) {
@@ -225,11 +241,4 @@ fn test_subscribe() {
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
     assert_eq!(subscriber.borrow().msgs[1], &[1, 3, 5, 7]);
     assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
-}
-
-
-
-#[test]
-fn test_tree() {
-
 }
