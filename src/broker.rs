@@ -110,16 +110,20 @@ pub struct SubscriptionsT<T: SubscriberT> {
 }
 
 impl<T: SubscriberT> SubscriptionsT<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         SubscriptionsT { tree: Node { children: HashMap::new(), leaves: vec![] }}
     }
 
-    fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+    pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
     }
 
-    fn publish(&self, topic: &str, payload: &[u8]) {
+    pub fn publish(&self, topic: &str, payload: &[u8]) {
 
     }
+
+    // fn add_or_find(&mut self, subscriber: Rc<RefCell<T>>) -> Rc<RefCell<T>> {
+    // }
+
 }
 
 #[cfg(test)]
@@ -143,18 +147,31 @@ impl SubscriberT for TestSubscriberT {
 
 #[test]
 fn test_subt() {
-    let mut subs = SubscriptionsT::<TestSubscriberT>::new();
+    let mut broker = SubscriptionsT::<TestSubscriberT>::new();
     let sub_ref = Rc::new(RefCell::new(TestSubscriberT::new()));
     let mut subscriber = sub_ref.clone();
-    subs.publish("topics/foo", &[0, 1, 2]);
+    broker.publish("topics/foo", &[0, 1, 2]);
     assert_eq!(subscriber.borrow().msgs.len(), 0);
 
-    subs.subscribe(subscriber.clone(), &["topics/foo"]);
-    subs.publish("topics/foo", &[0, 1, 9]);
-    subs.publish("topics/bar", &[2, 4, 6]);
+    broker.subscribe(subscriber.clone(), &["topics/foo"]);
+    broker.publish("topics/foo", &[0, 1, 9]);
+    broker.publish("topics/bar", &[2, 4, 6]);
     assert_eq!(subscriber.borrow().msgs.len(), 1);
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
 
+    broker.subscribe(subscriber.clone(), &["topics/foo"]);
+    broker.publish("topics/foo", &[0, 1, 9]);
+    broker.publish("topics/bar", &[2, 4, 6]);
+    assert_eq!(subscriber.borrow().msgs.len(), 1);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+
+    broker.subscribe(subscriber.clone(), &["topics/bar"]);
+    broker.publish("topics/foo", &[1, 3, 5, 7]);
+    broker.publish("topics/bar", &[2, 4]);
+    assert_eq!(subscriber.borrow().msgs.len(), 3);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+    assert_eq!(subscriber.borrow().msgs[1], &[1, 3, 5, 7]);
+    assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
 }
 
 #[cfg(test)]
