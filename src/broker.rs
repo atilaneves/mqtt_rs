@@ -252,3 +252,35 @@ fn test_unsubscribe_one() {
     assert_eq!(subscriber.borrow().msgs[1], &[2, 4]);
     assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
 }
+
+
+#[cfg(test)]
+fn test_matches(pub_topic: &str, sub_topic: &str) -> bool {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
+    let subscriber = sub_rc.clone();
+
+    broker.subscribe(subscriber.clone(), &[sub_topic]);
+    broker.publish(pub_topic, &[0, 1, 2]);
+    let subscriber = subscriber.borrow();
+    subscriber.msgs.len() == 1
+}
+
+#[test]
+fn test_wildcards() {
+    assert_eq!(test_matches("foo/bar/baz", "foo/bar/baz"), true);
+    assert_eq!(test_matches("foo/bar", "foo/+"), true);
+    assert_eq!(test_matches("foo/baz", "foo/+"), true);
+    assert_eq!(test_matches("foo/bar/baz", "foo/+"), false);
+    assert_eq!(test_matches("foo/bar", "foo/#"), true);
+    assert_eq!(test_matches("foo/bar/baz", "foo/#"), true);
+    assert_eq!(test_matches("foo/bar/baz/boo", "foo/#"), true);
+    assert_eq!(test_matches("foo/bla/bar/baz/boo/bogadog", "foo/+/bar/baz/#"), true);
+    assert_eq!(test_matches("finance", "finance/#"), true);
+    assert_eq!(test_matches("finance", "finance#"), false);
+    assert_eq!(test_matches("finance", "#"), true);
+    assert_eq!(test_matches("finance/stock", "#"), true);
+    assert_eq!(test_matches("finance/stock", "finance/stock/ibm"), false);
+    assert_eq!(test_matches("topics/foo/bar", "topics/foo/#"), true);
+    assert_eq!(test_matches("topics/bar/baz/boo", "topics/foo/#"), false);
+}
