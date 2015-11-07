@@ -126,22 +126,23 @@ impl<T: Subscriber> Broker<T> {
                 Some(node) => {
                     //so that "finance/#" matches "finance"
                     if pub_parts.len() == 0 && node.children.contains_key("#") {
-                        let node = node.children.get("#").unwrap();
-                        for subscription in &node.leaves {
-                            let subscriber = subscription.subscriber.clone();
-                            subscriber.borrow_mut().new_message(payload);
-                        }
+                        Self::publish_node(node.children.get("#").unwrap(), payload);
                     }
 
                     if pub_parts.len() == 0 || part == "#" {
-                        for subscription in &node.leaves {
-                            let subscriber = subscription.subscriber.clone();
-                            subscriber.borrow_mut().new_message(payload);
-                        }
+                        Self::publish_node(&node, payload);
                     }
-                    Self::publish_impl(node, pub_parts, payload);
+
+                    Self::publish_impl(&node, pub_parts, payload);
                 }
             }
+        }
+    }
+
+    fn publish_node(node: &Node<T>, payload: &[u8]) {
+        for subscription in &node.leaves {
+            let subscriber = subscription.subscriber.clone();
+            subscriber.borrow_mut().new_message(payload);
         }
     }
 
