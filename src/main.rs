@@ -1,3 +1,5 @@
+extern crate mio;
+
 use std::io::Write;
 use std::io::Read;
 use std::net::TcpListener;
@@ -25,6 +27,8 @@ impl<'a> server::Client for TcpClient<'a> {
 }
 
 fn main() {
+    thread::spawn(miomain);
+
     let server = Arc::new(Mutex::new(server::Server::new()));
     let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
 
@@ -48,5 +52,100 @@ fn main() {
                 }
             }
         });
+    }
+}
+
+const MQTT_SERVER: mio::Token = mio::Token(0);
+
+fn miomain() {
+    let address = "0.0.0.0:1884".parse().unwrap();
+    let listener = mio::tcp::TcpListener::bind(&address).unwrap();
+    let mut event_loop = mio::EventLoop::new().unwrap();
+    event_loop.register(&listener, MQTT_SERVER);
+    println!("Running mio server");
+    event_loop.run(&mut MioHandler::new(listener));
+}
+
+
+struct MioHandler {
+    listener: mio::tcp::TcpListener,
+    connections: mio::util::Slab<Connection>,
+}
+
+impl MioHandler {
+    fn new(listener: mio::tcp::TcpListener) -> Self {
+        let slab = mio::util::Slab::new_starting_at(mio::Token(1), 1024 * 32);
+
+        MioHandler {
+            listener: listener,
+            connections: slab,
+        }
+    }
+}
+
+struct Connection {
+    socket: mio::tcp::TcpStream,
+    token: mio::Token,
+}
+
+impl Connection {
+    fn new(socket: mio::tcp::TcpStream, token: mio::Token) -> Self {
+        Connection { socket: socket, token: token }
+    }
+
+    fn ready(&mut self, event_loop: &mut mio::EventLoop<MioHandler>, events: mio::EventSet) {
+        println!("Connection ready!");
+        assert!(events.is_readable());
+        let mut buffer : Vec<u8> = vec![0; 1024];
+        let res = self.socket.read(&mut buffer[..]);
+        match res {
+            Ok(length) => {
+                println!("Read these bytes: {:?}", &buffer[0..length]);
+            }
+            _ => {
+                println!("Could not read from client socket");
+            }
+        }
+    }
+}
+
+impl mio::Handler for MioHandler {
+    type Timeout = ();
+    type Message = ();
+
+    fn ready(&mut self,
+             event_loop: &mut mio::EventLoop<MioHandler>,
+             token: mio::Token,
+             events: mio::EventSet) {
+        match token {
+            MQTT_SERVER => {
+                assert!(events.is_readable());
+
+                println!("Server socket is ready to accept a connetion");
+                match self.listener.accept() {
+                    Ok(Some(socket)) => {
+                        println!("New mio client connection");
+                        let token = self.connections
+                            .insert_with(|token| Connection::new(socket, token))
+                            .unwrap();
+                        event_loop.register_opt(
+                            &self.connections[token].socket,
+                            token,
+                            mio::EventSet::readable(),
+                            mio::PollOpt::edge()).unwrap();
+                    }
+                    Ok(None) => {
+                        println!("The server socket wasn't actually ready");
+                    }
+                    Err(e) => {
+                        println!("listener.accept errored: {}", e);
+                        event_loop.shutdown();
+                    }
+                }
+            }
+            _ => {
+                self.connections[token].ready(event_loop, events);
+            }
+        }
     }
 }
