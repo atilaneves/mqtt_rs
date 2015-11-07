@@ -33,11 +33,12 @@ struct Node<T: Subscriber> {
 
 struct Subscription<T: Subscriber> {
     subscriber: Rc<RefCell<T>>,
+    topic: String,
 }
 
 impl<T: Subscriber> Subscription<T> {
-    fn new(subscriber: Rc<RefCell<T>>) -> Self {
-        Subscription { subscriber: subscriber.clone()}
+    fn new(subscriber: Rc<RefCell<T>>, topic: &str) -> Self {
+        Subscription { subscriber: subscriber.clone(), topic: topic.to_string() }
     }
 }
 
@@ -60,12 +61,16 @@ impl<T: Subscriber> Broker<T> {
         for topic in topics {
             let sub_parts : Vec<&str> = topic.split("/").collect();
             Self::ensure_node_exists(&sub_parts, &mut self.tree);
-            Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts);
+            Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts, topic);
         }
     }
 
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
         Self::unsubscribe_all_impl(&mut self.tree, subscriber.clone());
+    }
+
+    pub fn unsubscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics);
     }
 
     pub fn publish(&self, topic: &str, payload: &[u8]) {
@@ -86,7 +91,7 @@ impl<T: Subscriber> Broker<T> {
         Self::ensure_node_exists(&sub_parts[1..], node.children.get_mut(part).unwrap());
     }
 
-    fn add_subscription_to_node(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, sub_parts: &[&str]) {
+    fn add_subscription_to_node(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, sub_parts: &[&str], topic: &str) {
         if sub_parts.len() < 1 {
             panic!("oops");
         }
@@ -96,9 +101,9 @@ impl<T: Subscriber> Broker<T> {
         let sub_parts = &sub_parts[1..];
 
         if sub_parts.len() == 0 {
-            node.add_subscription(Subscription::new(subscriber.clone()));
+            node.add_subscription(Subscription::new(subscriber.clone(), topic));
         } else {
-            Self::add_subscription_to_node(node, subscriber, sub_parts);
+            Self::add_subscription_to_node(node, subscriber, sub_parts, topic);
         }
     }
 
@@ -137,6 +142,23 @@ impl<T: Subscriber> Broker<T> {
 
         for (_, node) in tree.children.iter_mut() {
             Self::unsubscribe_all_impl(node, subscriber.clone());
+        }
+    }
+
+    fn unsubscribe_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        tree.leaves.retain(|s| {
+            let is_same_subscriber = is_same_subscriber(s.subscriber.clone(), subscriber.clone());
+            //I have no idea why t below is &&&str, I added a tripe deref cos the compiler told me to
+            let is_same_topic = topics.into_iter().find(|t| ***t == s.topic).is_some();
+            !is_same_subscriber || !is_same_topic
+        });
+
+        if tree.children.len() == 0 {
+            return;
+        }
+
+        for (_, node) in tree.children.iter_mut() {
+            Self::unsubscribe_impl(node, subscriber.clone(), topics);
         }
     }
 }
@@ -189,13 +211,8 @@ fn test_unsubscribe_all() {
     let mut broker = Broker::<TestSubscriber>::new();
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
-    {
-        let foo = subscriber.borrow();
-        println!("in block, subscriber is {}", &*foo as *const TestSubscriber as i64);
-    }
 
     broker.subscribe(subscriber.clone(), &["topics/foo"]);
-    assert_eq!(is_same_subscriber(subscriber.clone(), subscriber.clone()), true);
     broker.publish("topics/foo", &[0, 1, 9]); //should get this
     broker.publish("topics/bar", &[2, 4, 6]); //shouldn't get this
     assert_eq!(subscriber.borrow().msgs.len(), 1);
@@ -209,4 +226,29 @@ fn test_unsubscribe_all() {
     //shouldn't have changed
     assert_eq!(subscriber.borrow().msgs.len(), 1);
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+}
+
+#[test]
+fn test_unsubscribe_one() {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
+    let subscriber = sub_rc.clone();
+
+    broker.subscribe(subscriber.clone(), &["topics/foo", "topics/bar"]);
+    broker.publish("topics/foo", &[0, 1, 9]); //should get this
+    broker.publish("topics/bar", &[2, 4]); //should get this
+    broker.publish("topics/baz", &[2, 4, 7, 11]); //shouldn't get this
+    assert_eq!(subscriber.borrow().msgs.len(), 2);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+    assert_eq!(subscriber.borrow().msgs[1], &[2, 4]);
+
+    broker.unsubscribe(subscriber.clone(), &["topics/foo"]);
+    broker.publish("topics/foo", &[0, 1, 9]); //shouldn't get this
+    broker.publish("topics/bar", &[2, 4]); //should get this
+    broker.publish("topics/baz", &[2, 4, 7, 11]); //shouldn't get this
+
+    assert_eq!(subscriber.borrow().msgs.len(), 3);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+    assert_eq!(subscriber.borrow().msgs[1], &[2, 4]);
+    assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
 }
