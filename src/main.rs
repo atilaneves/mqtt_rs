@@ -30,7 +30,7 @@ fn main() {
     thread::spawn(miomain);
 
     let server = Arc::new(Mutex::new(server::Server::new()));
-    let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
+    let listener = TcpListener::bind(("0.0.0.0", 1884)).unwrap();
 
     for byte_stream in listener.incoming() {
         let server = server.clone();
@@ -55,13 +55,13 @@ fn main() {
     }
 }
 
-const MQTT_SERVER: mio::Token = mio::Token(0);
+const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
 fn miomain() {
-    let address = "0.0.0.0:1884".parse().unwrap();
+    let address = "0.0.0.0:1883".parse().unwrap();
     let listener = mio::tcp::TcpListener::bind(&address).unwrap();
     let mut event_loop = mio::EventLoop::new().unwrap();
-    event_loop.register(&listener, MQTT_SERVER);
+    event_loop.register(&listener, MQTT_SERVER_TOKEN);
     println!("Running mio server");
     event_loop.run(&mut MioHandler::new(listener));
 }
@@ -70,6 +70,7 @@ fn miomain() {
 struct MioHandler {
     listener: mio::tcp::TcpListener,
     connections: mio::util::Slab<Connection>,
+    server: server::Server,
 }
 
 impl MioHandler {
@@ -79,6 +80,7 @@ impl MioHandler {
         MioHandler {
             listener: listener,
             connections: slab,
+            server: server::Server::new(),
         }
     }
 }
@@ -86,25 +88,42 @@ impl MioHandler {
 struct Connection {
     socket: mio::tcp::TcpStream,
     token: mio::Token,
+    stream: server::Stream,
 }
+
+struct TcpClient2<'a> {
+    stream: &'a mut mio::tcp::TcpStream,
+}
+
+impl<'a> TcpClient2<'a> {
+    fn new(stream: &'a mut mio::tcp::TcpStream) -> Self {
+        TcpClient2 { stream : stream }
+    }
+}
+
+impl<'a> server::Client for TcpClient2<'a> {
+    fn send(&mut self, bytes: &[u8]) {
+        let _ = self.stream.write(bytes);
+    }
+}
+
 
 impl Connection {
     fn new(socket: mio::tcp::TcpStream, token: mio::Token) -> Self {
-        Connection { socket: socket, token: token }
+        Connection { socket: socket, token: token, stream: server::Stream::new() }
     }
 
-    fn ready(&mut self, event_loop: &mut mio::EventLoop<MioHandler>, events: mio::EventSet) {
+    fn ready(&mut self, event_loop: &mut mio::EventLoop<MioHandler>, events: mio::EventSet, server: &mut server::Server) {
         println!("Connection ready!");
         assert!(events.is_readable());
-        let mut buffer : Vec<u8> = vec![0; 1024];
-        let res = self.socket.read(&mut buffer[..]);
-        match res {
+        let read_result = self.socket.read(self.stream.buffer());
+        let mut client = TcpClient2::new(&mut self.socket);
+
+        match read_result {
             Ok(length) => {
-                println!("Read these bytes: {:?}", &buffer[0..length]);
-            }
-            _ => {
-                println!("Could not read from client socket");
-            }
+                self.stream.handle_messages(length, server, &mut client);
+            },
+            _ => panic!("Error reading bytes from stream"),
         }
     }
 }
@@ -118,7 +137,7 @@ impl mio::Handler for MioHandler {
              token: mio::Token,
              events: mio::EventSet) {
         match token {
-            MQTT_SERVER => {
+            MQTT_SERVER_TOKEN => {
                 assert!(events.is_readable());
 
                 println!("Server socket is ready to accept a connetion");
@@ -144,7 +163,7 @@ impl mio::Handler for MioHandler {
                 }
             }
             _ => {
-                self.connections[token].ready(event_loop, events);
+                self.connections[token].ready(event_loop, events, &mut self.server);
             }
         }
     }
