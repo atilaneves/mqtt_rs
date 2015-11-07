@@ -296,3 +296,42 @@ fn test_wildcards() {
     assert_eq!(test_matches("topics/foo/bar", "topics/foo/#"), true);
     assert_eq!(test_matches("topics/bar/baz/boo", "topics/foo/#"), false);
 }
+
+#[test]
+fn test_subscribe_wildcards() {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc1 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc2 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc3 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc4 = Rc::new(RefCell::new(TestSubscriber::new()));
+
+    let subscriber1 = sub_rc1.clone();
+    let subscriber2 = sub_rc2.clone();
+    let subscriber3 = sub_rc3.clone();
+    let subscriber4 = sub_rc4.clone();
+
+    broker.subscribe(subscriber1.clone(), &["topics/foo/+"]);
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3]]);
+
+    broker.subscribe(subscriber2.clone(), &["topics/foo/#"]);
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3], &[3]]);
+    assert_eq!(subscriber2.borrow().msgs, vec![&[3]]);
+
+    broker.subscribe(subscriber3.clone(), &["topics/+/bar"]);
+    broker.subscribe(subscriber4.clone(), &["topics/#"]);
+
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]);
+    broker.publish("topics/boo/bar/zoo", &[5]);
+    broker.publish("topics/foo/bar/zoo", &[6]);
+    broker.publish("topics/bbobobobo/bar", &[7]);
+
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3], &[3], &[3]]);
+    assert_eq!(subscriber2.borrow().msgs, vec![&[3], &[3], &[6]]);
+    assert_eq!(subscriber3.borrow().msgs, vec![&[3], &[7]]);
+    assert_eq!(subscriber4.borrow().msgs, vec![&[3], &[4], &[5], &[6], &[7]]);
+}
