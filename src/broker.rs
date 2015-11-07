@@ -66,11 +66,11 @@ impl<T: Subscriber> Broker<T> {
     }
 
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
-        Self::unsubscribe_all_impl(&mut self.tree, subscriber.clone());
+        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), &[], false);
     }
 
     pub fn unsubscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
-        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics);
+        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics, true);
     }
 
     pub fn publish(&self, topic: &str, payload: &[u8]) {
@@ -146,23 +146,11 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
-    fn unsubscribe_all_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>) {
-        tree.leaves.retain(|s| !is_same_subscriber(s.subscriber.clone(), subscriber.clone()));
-
-        if tree.children.len() == 0 {
-            return;
-        }
-
-        for (_, node) in tree.children.iter_mut() {
-            Self::unsubscribe_all_impl(node, subscriber.clone());
-        }
-    }
-
-    fn unsubscribe_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+    fn unsubscribe_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, topics: &[&str], check_topics: bool) {
         tree.leaves.retain(|s| {
             let is_same_subscriber = is_same_subscriber(s.subscriber.clone(), subscriber.clone());
             //I have no idea why t below is &&&str, I added a tripe deref cos the compiler told me to
-            let is_same_topic = topics.into_iter().find(|t| ***t == s.topic).is_some();
+            let is_same_topic = !check_topics || topics.into_iter().find(|t| ***t == s.topic).is_some();
             !is_same_subscriber || !is_same_topic
         });
 
@@ -171,9 +159,10 @@ impl<T: Subscriber> Broker<T> {
         }
 
         for (_, node) in tree.children.iter_mut() {
-            Self::unsubscribe_impl(node, subscriber.clone(), topics);
+            Self::unsubscribe_impl(node, subscriber.clone(), topics, check_topics);
         }
     }
+
 }
 
 #[cfg(test)]
