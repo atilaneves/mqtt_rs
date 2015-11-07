@@ -31,6 +31,10 @@ impl<T: broker::Subscriber> Server<T> {
             },
         }
     }
+
+    pub fn publish(&self, topic: &str, paylod: &[u8]) {
+
+    }
 }
 
 pub struct Stream {
@@ -80,12 +84,13 @@ pub trait Client {
 #[cfg(test)]
 struct TestClient {
     msgs: Vec<Vec<u8>>,
+    payloads: Vec<Vec<u8>>,
 }
 
 #[cfg(test)]
 impl TestClient {
     fn new() -> Self {
-        TestClient { msgs: vec!() }
+        TestClient { msgs: vec![], payloads: vec![] }
     }
 
     fn last_msg(&self) -> &[u8] {
@@ -110,6 +115,7 @@ impl Client for TestClient {
 #[cfg(test)]
 impl broker::Subscriber for TestClient {
     fn new_message(&mut self, bytes: &[u8]) {
+        self.payloads.push(bytes.to_vec());
     }
 }
 
@@ -244,7 +250,7 @@ fn subscribe_bytes(topic: &str, msg_id: u16) -> Vec<u8> {
 }
 
 #[test]
-fn test_subscribe() {
+fn test_suback_bytes() {
     let subscribe_bytes = &subscribe_bytes("topic", 42)[..];
     let qos: u8 = 0;
     let suback_bytes = &[0x90u8, 3, 0, 42, qos][..];
@@ -255,4 +261,55 @@ fn test_subscribe() {
     let bytes_read = client.read(stream.buffer(), &subscribe_bytes);
     stream.handle_messages(bytes_read, &mut server, &mut client);
     assert_eq!(client.last_msg(), suback_bytes);
+}
+
+
+#[test]
+fn test_subscribe() {
+    let mut server = Server::<TestClient>::new();
+    let mut client = TestClient::new();
+    let mut stream = Stream::new();
+
+    server.publish("foo/bar/baz", &[0, 1, 2, 3]);
+    assert_eq!(client.payloads.len(), 0);
+
+    let sub_bytes = vec![
+        0x8b, 0x13, //fixed header
+        0x00, 0x21, //message ID
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,
+        0x01, //qos
+        0x00, 0x06, 's' as u8, 'e' as u8, 'c' as u8, 'o' as u8, 'n' as u8, 'd' as u8,
+        0x02, //qos
+        ];
+    let bytes_read = client.read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        0x00, 0x21, //message ID
+        'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
+        ];
+    let bytes_read = client.read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x06, 's' as u8, 'e' as u8, 'c' as u8, 'o' as u8, 'n' as u8, 'd' as u8,//topic name
+        0x00, 0x21, //message ID
+        'f' as u8, 'o' as u8, 'o' as u8,//payload
+        ];
+    let bytes_read = client.read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+
+    let pub_bytes = vec![
+        0x3c, 0x0c, //fixed header
+        0x00, 0x05, 't' as u8, 'h' as u8, 'i' as u8, 'r' as u8, 'd' as u8,//topic name
+        0x00, 0x21, //message ID
+        'f' as u8, 'o' as u8, 'o' as u8,//payload
+        ];
+    let bytes_read = client.read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, &mut client);
+
+    assert_eq!(client.payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
 }
