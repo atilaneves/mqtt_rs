@@ -66,11 +66,11 @@ impl<T: Subscriber> Broker<T> {
     }
 
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
-        Self::unsubscribe_all_impl(&mut self.tree, subscriber.clone());
+        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), &[], false);
     }
 
     pub fn unsubscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
-        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics);
+        Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics, true);
     }
 
     pub fn publish(&self, topic: &str, payload: &[u8]) {
@@ -109,47 +109,48 @@ impl<T: Subscriber> Broker<T> {
 
     fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8]) {
         if pub_parts.len() < 1 {
-            panic!("oops");
+            return;
         }
 
         let part = &pub_parts[0][..];
-        let node = tree.children.get(part);
         let pub_parts = &pub_parts[1..];
 
-        match node {
-            None => {
-                return; //didn't find a subscriber
-            },
-            Some(node) => {
-                if pub_parts.len() == 0 {
-                    for subscription in &node.leaves {
-                        let subscriber = subscription.subscriber.clone();
-                        subscriber.borrow_mut().new_message(payload);
+        for part in vec![part, "#", "+"] {
+
+            let node = tree.children.get(part);
+
+            match node {
+                None => {
+                    continue; //didn't find a subscriber
+                },
+                Some(node) => {
+                    //so that "finance/#" matches "finance"
+                    if pub_parts.len() == 0 && node.children.contains_key("#") {
+                        Self::publish_node(node.children.get("#").unwrap(), payload);
                     }
-                } else {
-                    Self::publish_impl(node, pub_parts, payload);
+
+                    if pub_parts.len() == 0 || part == "#" {
+                        Self::publish_node(&node, payload);
+                    }
+
+                    Self::publish_impl(&node, pub_parts, payload);
                 }
             }
         }
     }
 
-    fn unsubscribe_all_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>) {
-        tree.leaves.retain(|s| !is_same_subscriber(s.subscriber.clone(), subscriber.clone()));
-
-        if tree.children.len() == 0 {
-            return;
-        }
-
-        for (_, node) in tree.children.iter_mut() {
-            Self::unsubscribe_all_impl(node, subscriber.clone());
+    fn publish_node(node: &Node<T>, payload: &[u8]) {
+        for subscription in &node.leaves {
+            let subscriber = subscription.subscriber.clone();
+            subscriber.borrow_mut().new_message(payload);
         }
     }
 
-    fn unsubscribe_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+    fn unsubscribe_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, topics: &[&str], check_topics: bool) {
         tree.leaves.retain(|s| {
             let is_same_subscriber = is_same_subscriber(s.subscriber.clone(), subscriber.clone());
             //I have no idea why t below is &&&str, I added a tripe deref cos the compiler told me to
-            let is_same_topic = topics.into_iter().find(|t| ***t == s.topic).is_some();
+            let is_same_topic = !check_topics || topics.into_iter().find(|t| ***t == s.topic).is_some();
             !is_same_subscriber || !is_same_topic
         });
 
@@ -158,9 +159,10 @@ impl<T: Subscriber> Broker<T> {
         }
 
         for (_, node) in tree.children.iter_mut() {
-            Self::unsubscribe_impl(node, subscriber.clone(), topics);
+            Self::unsubscribe_impl(node, subscriber.clone(), topics, check_topics);
         }
     }
+
 }
 
 #[cfg(test)]
@@ -251,4 +253,75 @@ fn test_unsubscribe_one() {
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
     assert_eq!(subscriber.borrow().msgs[1], &[2, 4]);
     assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
+}
+
+
+#[cfg(test)]
+fn test_matches(pub_topic: &str, sub_topic: &str) -> bool {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
+    let subscriber = sub_rc.clone();
+
+    broker.subscribe(subscriber.clone(), &[sub_topic]);
+    broker.publish(pub_topic, &[0, 1, 2]);
+    let subscriber = subscriber.borrow();
+    subscriber.msgs.len() == 1
+}
+
+#[test]
+fn test_wildcards() {
+    assert_eq!(test_matches("foo/bar/baz", "foo/bar/baz"), true);
+    assert_eq!(test_matches("foo/bar", "foo/+"), true);
+    assert_eq!(test_matches("foo/baz", "foo/+"), true);
+    assert_eq!(test_matches("foo/bar/baz", "foo/+"), false);
+    assert_eq!(test_matches("foo/bar", "foo/#"), true);
+    assert_eq!(test_matches("foo/bar/baz", "foo/#"), true);
+    assert_eq!(test_matches("foo/bar/baz/boo", "foo/#"), true);
+    assert_eq!(test_matches("foo/bla/bar/baz/boo/bogadog", "foo/+/bar/baz/#"), true);
+    assert_eq!(test_matches("finance", "finance/#"), true);
+    assert_eq!(test_matches("finance", "finance#"), false);
+    assert_eq!(test_matches("finance", "#"), true);
+    assert_eq!(test_matches("finance/stock", "#"), true);
+    assert_eq!(test_matches("finance/stock", "finance/stock/ibm"), false);
+    assert_eq!(test_matches("topics/foo/bar", "topics/foo/#"), true);
+    assert_eq!(test_matches("topics/bar/baz/boo", "topics/foo/#"), false);
+}
+
+#[test]
+fn test_subscribe_wildcards() {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc1 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc2 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc3 = Rc::new(RefCell::new(TestSubscriber::new()));
+    let sub_rc4 = Rc::new(RefCell::new(TestSubscriber::new()));
+
+    let subscriber1 = sub_rc1.clone();
+    let subscriber2 = sub_rc2.clone();
+    let subscriber3 = sub_rc3.clone();
+    let subscriber4 = sub_rc4.clone();
+
+    broker.subscribe(subscriber1.clone(), &["topics/foo/+"]);
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3]]);
+
+    broker.subscribe(subscriber2.clone(), &["topics/foo/#"]);
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3], &[3]]);
+    assert_eq!(subscriber2.borrow().msgs, vec![&[3]]);
+
+    broker.subscribe(subscriber3.clone(), &["topics/+/bar"]);
+    broker.subscribe(subscriber4.clone(), &["topics/#"]);
+
+    broker.publish("topics/foo/bar", &[3]);
+    broker.publish("topics/bar/baz/boo", &[4]);
+    broker.publish("topics/boo/bar/zoo", &[5]);
+    broker.publish("topics/foo/bar/zoo", &[6]);
+    broker.publish("topics/bbobobobo/bar", &[7]);
+
+    assert_eq!(subscriber1.borrow().msgs, vec![&[3], &[3], &[3]]);
+    assert_eq!(subscriber2.borrow().msgs, vec![&[3], &[3], &[6]]);
+    assert_eq!(subscriber3.borrow().msgs, vec![&[3], &[7]]);
+    assert_eq!(subscriber4.borrow().msgs, vec![&[3], &[4], &[5], &[6], &[7]]);
 }
