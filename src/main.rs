@@ -25,6 +25,12 @@ impl<'a> server::Client for TcpClient<'a> {
     }
 }
 
+impl<'a> broker::Subscriber for TcpClient<'a> {
+    fn new_message(&mut self, bytes: &[u8]) {
+        self.stream.write(bytes);
+    }
+}
+
 
 const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
@@ -38,10 +44,10 @@ fn main() {
 }
 
 
-struct MioHandler {
+struct MioHandler<'a> {
     listener: TcpListener,
     connections: mio::util::Slab<Connection>,
-    server: server::Server,
+    server: server::Server<TcpClient<'a>>,
 }
 
 struct Connection {
@@ -49,7 +55,7 @@ struct Connection {
     stream: server::Stream,
 }
 
-impl MioHandler {
+impl<'a> MioHandler<'a> {
     fn new(listener: TcpListener) -> Self {
         let slab = mio::util::Slab::new_starting_at(mio::Token(1), 1024 * 32);
 
@@ -61,7 +67,7 @@ impl MioHandler {
     }
 }
 
-impl mio::Handler for MioHandler {
+impl<'a> mio::Handler for MioHandler<'a> {
     type Timeout = ();
     type Message = ();
 
@@ -108,7 +114,7 @@ impl Connection {
         Connection { socket: socket, stream: server::Stream::new() }
     }
 
-    fn ready(&mut self, server: &mut server::Server) {
+    fn ready(&mut self, server: &mut server::Server<TcpClient>) {
         let read_result = self.socket.read(self.stream.buffer());
         let mut client = TcpClient::new(&mut self.socket);
 

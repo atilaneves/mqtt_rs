@@ -1,8 +1,8 @@
 use message;
+use broker;
 
-
-pub struct Server {
-    id: i32,
+pub struct Server<T: broker::Subscriber> {
+    broker: broker::Broker<T>,
 }
 
 
@@ -10,9 +10,9 @@ static CONNACK_OK : [u8; 4] = [32, 2, 0, 0];
 static PING_RESP : [u8; 2] = [0xd0, 0];
 
 
-impl Server {
+impl<T: broker::Subscriber> Server<T> {
     pub fn new() -> Self {
-        Server { id: 4 }
+        Server { broker: broker::Broker::new() }
     }
 
     fn new_message<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
@@ -47,7 +47,7 @@ impl Stream {
         &mut self.buffer[self.bytes_start .. ]
     }
 
-    pub fn handle_messages<C: Client>(&mut self, bytes_read: usize, server: &mut Server, client: &mut C) {
+    pub fn handle_messages<C: Client, S: broker::Subscriber>(&mut self, bytes_read: usize, server: &mut Server<S>, client: &mut C) {
         let vec : Vec<u8>;
         {
             let mut slice = &self.buffer[0 .. self.bytes_start + bytes_read];
@@ -107,6 +107,12 @@ impl Client for TestClient {
     }
 }
 
+#[cfg(test)]
+impl broker::Subscriber for TestClient {
+    fn new_message(&mut self, bytes: &[u8]) {
+    }
+}
+
 
 #[test]
 fn test_connect() {
@@ -123,7 +129,7 @@ fn test_connect() {
         0x00, 0x02, 'p' as u8, 'w' as u8, // password
         ][0..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
 
     server.new_message(&mut client, connect_bytes);
@@ -135,7 +141,7 @@ fn test_connect() {
 fn test_ping() {
     let ping_bytes =  &[0xc0u8, 0][0..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
 
     server.new_message(&mut client, ping_bytes);
@@ -148,7 +154,7 @@ fn test_ping() {
 fn test_pings_all_at_once() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
     let mut stream = Stream::new();
 
@@ -165,7 +171,7 @@ fn test_pings_all_at_once() {
 fn test_pings_multiple_time_unbroken() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0][0..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
     let mut stream = Stream::new();
 
@@ -188,7 +194,7 @@ fn test_pings_broken() {
     let ping_fst = &[0xc0u8][0..];
     let ping_snd = &[0u8][0..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
     let mut stream = Stream::new();
 
@@ -243,7 +249,7 @@ fn test_subscribe() {
     let qos: u8 = 0;
     let suback_bytes = &[0x90u8, 3, 0, 42, qos][..];
 
-    let mut server = Server::new();
+    let mut server = Server::<TestClient>::new();
     let mut client = TestClient::new();
     let mut stream = Stream::new();
     let bytes_read = client.read(stream.buffer(), &subscribe_bytes);
