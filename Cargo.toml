@@ -6,3 +6,6 @@ authors = ["Atila Neves <aalvesne@cisco.com>"]
 [profile.dev]
 opt-level = 0
 debug = true
+
+[dependencies]
+mio = "0.4.1"

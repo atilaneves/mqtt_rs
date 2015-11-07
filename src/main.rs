@@ -1,19 +1,20 @@
+extern crate mio;
+
 use std::io::Write;
 use std::io::Read;
-use std::net::TcpListener;
-use std::thread;
-use std::sync::{Arc, Mutex};
+use mio::tcp::*;
 
 mod server;
 mod broker;
 mod message;
 
+
 struct TcpClient<'a> {
-    stream: &'a mut std::net::TcpStream,
+    stream: &'a mut mio::tcp::TcpStream,
 }
 
 impl<'a> TcpClient<'a> {
-    fn new(stream: &'a mut std::net::TcpStream) -> Self {
+    fn new(stream: &'a mut mio::tcp::TcpStream) -> Self {
         TcpClient { stream : stream }
     }
 }
@@ -24,29 +25,98 @@ impl<'a> server::Client for TcpClient<'a> {
     }
 }
 
+
+const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
+
 fn main() {
-    let server = Arc::new(Mutex::new(server::Server::new()));
-    let listener = TcpListener::bind(("0.0.0.0", 1883)).unwrap();
+    let address = "0.0.0.0:1883".parse().unwrap();
+    let listener = TcpListener::bind(&address).unwrap();
+    let mut event_loop = mio::EventLoop::new().unwrap();
+    event_loop.register(&listener, MQTT_SERVER_TOKEN).unwrap();
+    println!("Running mio server");
+    event_loop.run(&mut MioHandler::new(listener)).unwrap();
+}
 
-    for byte_stream in listener.incoming() {
-        let server = server.clone();
-        let mut mqtt_stream = server::Stream::new();
 
-        thread::spawn(move || {
-            let mut byte_stream = byte_stream.unwrap();
-            loop {
-                let read_result = byte_stream.read(mqtt_stream.buffer());
-                //the client must be created here due to scoping issues with byte_stream
-                let mut client = TcpClient::new(&mut byte_stream);
+struct MioHandler {
+    listener: TcpListener,
+    connections: mio::util::Slab<Connection>,
+    server: server::Server,
+}
 
-                match read_result {
-                    Ok(length) => {
-                        let mut server = server.lock().unwrap();
-                        mqtt_stream.handle_messages(length, &mut server, &mut client);
-                    },
-                    _ => panic!("Error reading bytes from stream"),
+struct Connection {
+    socket: mio::tcp::TcpStream,
+    stream: server::Stream,
+}
+
+impl MioHandler {
+    fn new(listener: TcpListener) -> Self {
+        let slab = mio::util::Slab::new_starting_at(mio::Token(1), 1024 * 32);
+
+        MioHandler {
+            listener: listener,
+            connections: slab,
+            server: server::Server::new(),
+        }
+    }
+}
+
+impl mio::Handler for MioHandler {
+    type Timeout = ();
+    type Message = ();
+
+    fn ready(&mut self,
+             event_loop: &mut mio::EventLoop<MioHandler>,
+             token: mio::Token,
+             events: mio::EventSet) {
+        match token {
+            MQTT_SERVER_TOKEN => {
+                assert!(events.is_readable());
+
+                println!("Server socket is ready to accept a connetion");
+                match self.listener.accept() {
+                    Ok(Some(socket)) => {
+                        println!("New mio client connection");
+                        let token = self.connections
+                            .insert_with(|_| Connection::new(socket))
+                            .unwrap();
+                        event_loop.register_opt(
+                            &self.connections[token].socket,
+                            token,
+                            mio::EventSet::readable(),
+                            mio::PollOpt::edge()).unwrap();
+                    }
+                    Ok(None) => {
+                        println!("The server socket wasn't actually ready");
+                    }
+                    Err(e) => {
+                        println!("listener.accept errored: {}", e);
+                        event_loop.shutdown();
+                    }
                 }
             }
-        });
+            _ => {
+                assert!(events.is_readable());
+                self.connections[token].ready(&mut self.server);
+            }
+        }
+    }
+}
+
+impl Connection {
+    fn new(socket: mio::tcp::TcpStream) -> Self {
+        Connection { socket: socket, stream: server::Stream::new() }
+    }
+
+    fn ready(&mut self, server: &mut server::Server) {
+        let read_result = self.socket.read(self.stream.buffer());
+        let mut client = TcpClient::new(&mut self.socket);
+
+        match read_result {
+            Ok(length) => {
+                self.stream.handle_messages(length, server, &mut client);
+            },
+            _ => panic!("Error reading bytes from stream"),
+        }
     }
 }
