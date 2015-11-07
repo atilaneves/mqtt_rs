@@ -4,7 +4,18 @@ use std::collections::HashMap;
 
 //is same identity
 fn is_same<T>(lhs: &T, rhs: &T) -> bool {
-    return lhs as *const T as i64 == rhs as *const T as i64
+    lhs as *const T as i64 == rhs as *const T as i64
+}
+
+//the code below is horrible
+//borrow doesn't return T, it returns Ref<T>
+//we need to dereference it to get to the T inside
+//is_same takes borrow so reapply the ampersand
+fn is_same_subscriber<T: Subscriber>(lhs: Rc<RefCell<T>>, rhs: Rc<RefCell<T>>) -> bool {
+    let lhs = lhs.clone();
+    let rhs = rhs.clone();
+    let res = is_same(&*lhs.borrow(), &*rhs.borrow()); //needed to live long enough
+    res
 }
 
 pub trait Subscriber {
@@ -53,6 +64,15 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
+    pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
+        Self::unsubscribe_all_impl(&mut self.tree, subscriber.clone());
+    }
+
+    pub fn publish(&self, topic: &str, payload: &[u8]) {
+        let pub_parts : Vec<&str> = topic.split("/").collect();
+        Self::publish_impl(&self.tree, &pub_parts, &payload);
+    }
+
     fn ensure_node_exists(sub_parts: &[&str], node: &mut Node<T>) {
         if sub_parts.len() == 0 {
             return;
@@ -82,11 +102,6 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
-    pub fn publish(&self, topic: &str, payload: &[u8]) {
-        let pub_parts : Vec<&str> = topic.split("/").collect();
-        Self::publish_impl(&self.tree, &pub_parts, &payload);
-    }
-
     fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8]) {
         if pub_parts.len() < 1 {
             panic!("oops");
@@ -112,6 +127,18 @@ impl<T: Subscriber> Broker<T> {
             }
         }
     }
+
+    fn unsubscribe_all_impl(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>) {
+        tree.leaves.retain(|s| !is_same_subscriber(s.subscriber.clone(), subscriber.clone()));
+
+        if tree.children.len() == 0 {
+            return;
+        }
+
+        for (_, node) in tree.children.iter_mut() {
+            Self::unsubscribe_all_impl(node, subscriber.clone());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -122,14 +149,13 @@ struct TestSubscriber {
 #[cfg(test)]
 impl TestSubscriber {
     fn new() -> Self {
-        return TestSubscriber{msgs: vec![]}
+        TestSubscriber{msgs: vec![]}
     }
 }
 
 #[cfg(test)]
 impl Subscriber for TestSubscriber {
     fn new_message(&mut self, bytes: &[u8]) {
-        println!("new message with bytes {:?}", bytes);
         self.msgs.push(bytes.to_vec());
     }
 }
@@ -137,8 +163,8 @@ impl Subscriber for TestSubscriber {
 #[test]
 fn test_subscribe() {
     let mut broker = Broker::<TestSubscriber>::new();
-    let sub_ref = Rc::new(RefCell::new(TestSubscriber::new()));
-    let subscriber = sub_ref.clone();
+    let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
+    let subscriber = sub_rc.clone();
     broker.publish("topics/foo", &[0, 1, 2]);
     assert_eq!(subscriber.borrow().msgs.len(), 0);
 
@@ -155,4 +181,32 @@ fn test_subscribe() {
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
     assert_eq!(subscriber.borrow().msgs[1], &[1, 3, 5, 7]);
     assert_eq!(subscriber.borrow().msgs[2], &[2, 4]);
+}
+
+
+#[test]
+fn test_unsubscribe_all() {
+    let mut broker = Broker::<TestSubscriber>::new();
+    let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
+    let subscriber = sub_rc.clone();
+    {
+        let foo = subscriber.borrow();
+        println!("in block, subscriber is {}", &*foo as *const TestSubscriber as i64);
+    }
+
+    broker.subscribe(subscriber.clone(), &["topics/foo"]);
+    assert_eq!(is_same_subscriber(subscriber.clone(), subscriber.clone()), true);
+    broker.publish("topics/foo", &[0, 1, 9]); //should get this
+    broker.publish("topics/bar", &[2, 4, 6]); //shouldn't get this
+    assert_eq!(subscriber.borrow().msgs.len(), 1);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
+
+    broker.unsubscribe_all(subscriber.clone());
+    broker.publish("topics/foo", &[0, 1, 9]);
+    broker.publish("topics/bar", &[2, 4]);
+    broker.publish("topics/baz", &[2, 4, 7, 11]);
+
+    //shouldn't have changed
+    assert_eq!(subscriber.borrow().msgs.len(), 1);
+    assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
 }
