@@ -109,24 +109,36 @@ impl<T: Subscriber> Broker<T> {
 
     fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8]) {
         if pub_parts.len() < 1 {
-            panic!("oops");
+            return;
         }
 
         let part = &pub_parts[0][..];
-        let node = tree.children.get(part);
         let pub_parts = &pub_parts[1..];
 
-        match node {
-            None => {
-                return; //didn't find a subscriber
-            },
-            Some(node) => {
-                if pub_parts.len() == 0 {
-                    for subscription in &node.leaves {
-                        let subscriber = subscription.subscriber.clone();
-                        subscriber.borrow_mut().new_message(payload);
+        for part in vec![part, "#", "+"] {
+
+            let node = tree.children.get(part);
+
+            match node {
+                None => {
+                    continue; //didn't find a subscriber
+                },
+                Some(node) => {
+                    //so that "finance/#" matches "finance"
+                    if pub_parts.len() == 0 && node.children.contains_key("#") {
+                        let node = node.children.get("#").unwrap();
+                        for subscription in &node.leaves {
+                            let subscriber = subscription.subscriber.clone();
+                            subscriber.borrow_mut().new_message(payload);
+                        }
                     }
-                } else {
+
+                    if pub_parts.len() == 0 || part == "#" {
+                        for subscription in &node.leaves {
+                            let subscriber = subscription.subscriber.clone();
+                            subscriber.borrow_mut().new_message(payload);
+                        }
+                    }
                     Self::publish_impl(node, pub_parts, payload);
                 }
             }
