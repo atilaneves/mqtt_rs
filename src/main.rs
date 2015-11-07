@@ -39,7 +39,6 @@ fn main() {
     let listener = TcpListener::bind(&address).unwrap();
     let mut event_loop = mio::EventLoop::new().unwrap();
     event_loop.register(&listener, MQTT_SERVER_TOKEN).unwrap();
-    println!("Running mio server");
     event_loop.run(&mut MioHandler::new(listener)).unwrap();
 }
 
