@@ -2,3 +2,7 @@
 name = "mqtt"
 version = "0.1.0"
 authors = ["Atila Neves <aalvesne@cisco.com>"]
+
+[profile.dev]
+opt-level = 0
+debug = true
