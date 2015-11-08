@@ -31,7 +31,9 @@ impl<T: broker::Subscriber> Server<T> {
                 client.borrow_mut().new_message(&PING_RESP);
             }
             message::MqttType::Subscribe => {
-                self.broker.subscribe(client.clone(), &["foo", "bar"]);
+                for topic in message::subscribe_topics(bytes) {
+                    self.broker.subscribe(client.clone(), &topic[..]);
+                }
 
                 let msg_id = message::subscribe_msg_id(bytes);
                 let qos: u8 = 0;
@@ -39,7 +41,8 @@ impl<T: broker::Subscriber> Server<T> {
                 client.borrow_mut().new_message(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
             }
             message::MqttType::Publish => {
-                self.broker.publish("foo", &[7, 8, 9]);
+                self.broker.publish(&message::publish_topic(bytes)[..],
+                                    &message::publish_payload(bytes)[..]);
             }
         }
     }
