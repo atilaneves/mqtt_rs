@@ -1,5 +1,7 @@
 use std::mem;
 
+const HEADER_LEN: usize = 2;
+
 #[derive(PartialEq, Debug)]
 pub enum MqttType {
     //Reserved = 0,
@@ -115,4 +117,54 @@ pub fn subscribe_msg_id(bytes: &[u8]) -> u16 {
 fn subscribe_msg_id_happy() {
     assert_eq!(subscribe_msg_id(&[0x8cu8, 3, 0, 33]), 33);
     assert_eq!(subscribe_msg_id(&[0x8cu8, 3, 0, 21]), 21);
+}
+
+pub fn message_topic(bytes: &[u8]) -> String {
+    let topic_len = ((bytes[2] as u16) << 8) + bytes[3] as u16;
+    let topic_len = topic_len as usize;
+    String::from_utf8(bytes[4 .. 4 + topic_len].to_vec()).unwrap()
+}
+
+#[test]
+fn test_get_topic_with_msg_id() {
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        0x00, 0x21, //message ID
+        'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
+        ];
+    assert_eq!(message_topic(&pub_bytes[..]), "first");
+}
+
+
+pub fn message_payload(bytes: &[u8]) -> &[u8] {
+    let topic_len = message_topic(bytes).len();
+    let mut start = HEADER_LEN + topic_len + 2;
+    if (bytes[0] & 0x06) != 0 {
+        start += 2;
+    }
+
+    &bytes[start ..]
+}
+
+#[test]
+fn test_get_payload_with_msg_id() {
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        0x00, 0x21, //message ID
+        1, 2, 3, 4, //payload
+        ];
+    assert_eq!(message_payload(&pub_bytes[..]).to_vec(), vec![1, 2, 3, 4]);
+}
+
+
+#[test]
+fn test_get_payload_no_msg_id() {
+    let pub_bytes = vec![
+        0x30, 0x0a, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        9, 8, 7, //payload
+        ];
+    assert_eq!(message_payload(&pub_bytes[..]).to_vec(), vec![9, 8, 7]);
 }

@@ -111,7 +111,10 @@ impl TestClient {
 #[cfg(test)]
 impl broker::Subscriber for TestClient {
     fn new_message(&mut self, bytes: &[u8]) {
-        self.payloads.push(bytes.to_vec());
+        self.msgs.push(bytes.to_vec());
+        if message::message_type(bytes) == message::MqttType::Publish {
+            self.payloads.push(bytes.to_vec());
+        }
     }
 }
 
@@ -133,9 +136,9 @@ fn test_connect() {
 
     let mut server = Server::<TestClient>::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
-    let client = client.clone();
 
     server.new_message(client.clone(), connect_bytes);
+    assert_eq!(client.borrow().msgs.len(), 1);
     assert_eq!(client.borrow().last_msg(), &CONNACK_OK);
 }
 
@@ -303,7 +306,7 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
         ];
-    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
     stream.handle_messages(bytes_read, &mut server, client.clone());
 
     let pub_bytes = vec![
@@ -312,7 +315,7 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'f' as u8, 'o' as u8, 'o' as u8,//payload
         ];
-    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
     stream.handle_messages(bytes_read, &mut server, client.clone());
 
     let pub_bytes = vec![
@@ -321,7 +324,7 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'f' as u8, 'o' as u8, 'o' as u8,//payload
         ];
-    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
     stream.handle_messages(bytes_read, &mut server, client.clone());
 
     assert_eq!(client.borrow().payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
