@@ -1,6 +1,10 @@
 use message;
 use broker;
 
+use std::rc::{Rc};
+use std::cell::{RefCell};
+
+
 pub struct Server<T: broker::Subscriber> {
     broker: broker::Broker<T>,
 }
@@ -15,25 +19,29 @@ impl<T: broker::Subscriber> Server<T> {
         Server { broker: broker::Broker::new() }
     }
 
-    fn new_message<C: Client>(&mut self, client: &mut C, bytes: &[u8]) {
+    fn new_message(&mut self, client: Rc<RefCell<T>>, bytes: &[u8]) {
         let message_type = message::message_type(bytes);
         match message_type {
             message::MqttType::Connect => {
-                client.send(&CONNACK_OK);
-            },
+                let client = client.clone();
+                client.borrow_mut().new_message(&CONNACK_OK);
+            }
             message::MqttType::PingReq => {
-                client.send(&PING_RESP);
-            },
+                let client = client.clone();
+                client.borrow_mut().new_message(&PING_RESP);
+            }
             message::MqttType::Subscribe => {
+                self.broker.subscribe(client.clone(), &["foo", "bar"]);
+
                 let msg_id = message::subscribe_msg_id(bytes);
                 let qos: u8 = 0;
-                client.send(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
-            },
+                let client = client.clone();
+                client.borrow_mut().new_message(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
+            }
+            message::MqttType::Publish => {
+                self.broker.publish("foo", &[7, 8, 9]);
+            }
         }
-    }
-
-    pub fn publish(&self, topic: &str, paylod: &[u8]) {
-
     }
 }
 
@@ -51,7 +59,7 @@ impl Stream {
         &mut self.buffer[self.bytes_start .. ]
     }
 
-    pub fn handle_messages<C: Client, S: broker::Subscriber>(&mut self, bytes_read: usize, server: &mut Server<S>, client: &mut C) {
+    pub fn handle_messages<T: broker::Subscriber>(&mut self, bytes_read: usize, server: &mut Server<T>, client: Rc<RefCell<T>>) {
         let vec : Vec<u8>;
         {
             let mut slice = &self.buffer[0 .. self.bytes_start + bytes_read];
@@ -62,7 +70,7 @@ impl Stream {
                 let msg = &slice[0 .. total_len];
                 slice = &slice[total_len..];
                 self.bytes_start += total_len;
-                server.new_message(client, msg);
+                server.new_message(client.clone(), msg);
             }
             vec = slice.to_vec();
         }
@@ -74,11 +82,6 @@ impl Stream {
 
         self.bytes_start = vec.len();
     }
-}
-
-
-pub trait Client {
-    fn send(&mut self, bytes: &[u8]);
 }
 
 #[cfg(test)]
@@ -106,13 +109,6 @@ impl TestClient {
 }
 
 #[cfg(test)]
-impl Client for TestClient {
-    fn send(&mut self, bytes: &[u8]) {
-        self.msgs.push(bytes.to_vec());
-    }
-}
-
-#[cfg(test)]
 impl broker::Subscriber for TestClient {
     fn new_message(&mut self, bytes: &[u8]) {
         self.payloads.push(bytes.to_vec());
@@ -136,10 +132,11 @@ fn test_connect() {
         ][0..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    server.new_message(&mut client, connect_bytes);
-    assert_eq!(client.last_msg(), &CONNACK_OK);
+    server.new_message(client.clone(), connect_bytes);
+    assert_eq!(client.borrow().last_msg(), &CONNACK_OK);
 }
 
 
@@ -148,11 +145,12 @@ fn test_ping() {
     let ping_bytes =  &[0xc0u8, 0][0..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    server.new_message(&mut client, ping_bytes);
+    server.new_message(client.clone(), ping_bytes);
 
-    assert_eq!(client.last_msg(), &PING_RESP);
+    assert_eq!(client.borrow().last_msg(), &PING_RESP);
 }
 
 
@@ -161,14 +159,16 @@ fn test_pings_all_at_once() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
     let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    let bytes_read = client.read(stream.buffer(), ping_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
 
-    assert_eq!(client.msgs.len(), 4);
-    for msg in client.msgs {
+    let client = client.clone();
+    assert_eq!(client.borrow().msgs.len(), 4);
+    for msg in &client.borrow().msgs {
         assert_eq!(msg, &PING_RESP);
     }
 }
@@ -178,18 +178,19 @@ fn test_pings_multiple_time_unbroken() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0][0..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
     let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    let bytes_read = client.read(stream.buffer(), ping_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 2);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 2);
 
-    let bytes_read = client.read(stream.buffer(), ping_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 4);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 4);
 
-    for msg in client.msgs {
+    for msg in &client.borrow().msgs {
         assert_eq!(msg, &PING_RESP);
     }
 }
@@ -201,26 +202,27 @@ fn test_pings_broken() {
     let ping_snd = &[0u8][0..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
     let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    let bytes_read = client.read(stream.buffer(), ping_fst);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 0);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_fst);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 0);
 
-    let bytes_read = client.read(stream.buffer(), ping_snd);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 1);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_snd);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 1);
 
-    let bytes_read = client.read(stream.buffer(), ping_fst);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 1);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_fst);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 1);
 
-    let bytes_read = client.read(stream.buffer(), ping_snd);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.msgs.len(), 2);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), ping_snd);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().msgs.len(), 2);
 
-    for msg in client.msgs {
+    for msg in &client.borrow().msgs {
         assert_eq!(msg, &PING_RESP);
     }
 }
@@ -256,22 +258,33 @@ fn test_suback_bytes() {
     let suback_bytes = &[0x90u8, 3, 0, 42, qos][..];
 
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
     let mut stream = Stream::new();
-    let bytes_read = client.read(stream.buffer(), &subscribe_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
-    assert_eq!(client.last_msg(), suback_bytes);
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
+
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &subscribe_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().last_msg(), suback_bytes);
 }
 
 
 #[test]
 fn test_subscribe() {
     let mut server = Server::<TestClient>::new();
-    let mut client = TestClient::new();
     let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
 
-    server.publish("foo/bar/baz", &[0, 1, 2, 3]);
-    assert_eq!(client.payloads.len(), 0);
+
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        0x00, 0x21, //message ID
+        'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
+        ];
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().payloads.len(), 0);
 
     let sub_bytes = vec![
         0x8b, 0x13, //fixed header
@@ -281,8 +294,8 @@ fn test_subscribe() {
         0x00, 0x06, 's' as u8, 'e' as u8, 'c' as u8, 'o' as u8, 'n' as u8, 'd' as u8,
         0x02, //qos
         ];
-    let bytes_read = client.read(stream.buffer(), &sub_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
 
     let pub_bytes = vec![
         0x3c, 0x0d, //fixed header
@@ -290,8 +303,8 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
         ];
-    let bytes_read = client.read(stream.buffer(), &sub_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
 
     let pub_bytes = vec![
         0x3c, 0x0d, //fixed header
@@ -299,8 +312,8 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'f' as u8, 'o' as u8, 'o' as u8,//payload
         ];
-    let bytes_read = client.read(stream.buffer(), &sub_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
 
     let pub_bytes = vec![
         0x3c, 0x0c, //fixed header
@@ -308,8 +321,8 @@ fn test_subscribe() {
         0x00, 0x21, //message ID
         'f' as u8, 'o' as u8, 'o' as u8,//payload
         ];
-    let bytes_read = client.read(stream.buffer(), &sub_bytes);
-    stream.handle_messages(bytes_read, &mut server, &mut client);
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
 
-    assert_eq!(client.payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
+    assert_eq!(client.borrow().payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
 }

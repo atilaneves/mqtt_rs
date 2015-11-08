@@ -2,34 +2,13 @@ extern crate mio;
 
 use std::io::Write;
 use std::io::Read;
+use std::rc::{Rc};
+use std::cell::{RefCell};
 use mio::tcp::*;
 
 mod server;
 mod broker;
 mod message;
-
-
-struct TcpClient<'a> {
-    stream: &'a mut mio::tcp::TcpStream,
-}
-
-impl<'a> TcpClient<'a> {
-    fn new(stream: &'a mut mio::tcp::TcpStream) -> Self {
-        TcpClient { stream : stream }
-    }
-}
-
-impl<'a> server::Client for TcpClient<'a> {
-    fn send(&mut self, bytes: &[u8]) {
-        let _ = self.stream.write(bytes);
-    }
-}
-
-impl<'a> broker::Subscriber for TcpClient<'a> {
-    fn new_message(&mut self, bytes: &[u8]) {
-        self.stream.write(bytes);
-    }
-}
 
 
 const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
@@ -43,10 +22,10 @@ fn main() {
 }
 
 
-struct MioHandler<'a> {
+struct MioHandler {
     listener: TcpListener,
-    connections: mio::util::Slab<Connection>,
-    server: server::Server<TcpClient<'a>>,
+    connections: mio::util::Slab<Rc<RefCell<Connection>>>,
+    server: server::Server<Connection>,
 }
 
 struct Connection {
@@ -54,7 +33,7 @@ struct Connection {
     stream: server::Stream,
 }
 
-impl<'a> MioHandler<'a> {
+impl MioHandler {
     fn new(listener: TcpListener) -> Self {
         let slab = mio::util::Slab::new_starting_at(mio::Token(1), 1024 * 32);
 
@@ -66,7 +45,7 @@ impl<'a> MioHandler<'a> {
     }
 }
 
-impl<'a> mio::Handler for MioHandler<'a> {
+impl mio::Handler for MioHandler {
     type Timeout = ();
     type Message = ();
 
@@ -83,10 +62,11 @@ impl<'a> mio::Handler for MioHandler<'a> {
                     Ok(Some(socket)) => {
                         println!("New mio client connection");
                         let token = self.connections
-                            .insert_with(|_| Connection::new(socket))
+                            .insert_with(|_| Rc::new(RefCell::new(Connection::new(socket))))
                             .unwrap();
+                        let connection = &self.connections[token].clone();
                         event_loop.register_opt(
-                            &self.connections[token].socket,
+                            &connection.borrow().socket,
                             token,
                             mio::EventSet::readable(),
                             mio::PollOpt::edge()).unwrap();
@@ -102,26 +82,49 @@ impl<'a> mio::Handler for MioHandler<'a> {
             }
             _ => {
                 assert!(events.is_readable());
-                self.connections[token].ready(&mut self.server);
+                //self.connections[token].clone().borrow_mut().ready(&mut self.server);
+                connection_ready(&mut self.server, self.connections[token].clone());
             }
         }
     }
 }
+
+fn connection_ready(server: &mut server::Server<Connection>, connection: Rc<RefCell<Connection>>) {
+    let connection = connection.clone();
+    let read_result = connection.borrow_mut().read();
+
+    match read_result {
+        Ok(length) => {
+            connection.borrow_mut().stream.handle_messages(length, server, connection.clone());
+        },
+        _ => panic!("Error reading bytes from stream"),
+    }
+}
+
 
 impl Connection {
     fn new(socket: mio::tcp::TcpStream) -> Self {
         Connection { socket: socket, stream: server::Stream::new() }
     }
 
-    fn ready(&mut self, server: &mut server::Server<TcpClient>) {
-        let read_result = self.socket.read(self.stream.buffer());
-        let mut client = TcpClient::new(&mut self.socket);
+    fn read(&mut self) -> std::io::Result<usize> {
+        self.socket.read(self.stream.buffer())
+    }
 
-        match read_result {
-            Ok(length) => {
-                self.stream.handle_messages(length, server, &mut client);
-            },
-            _ => panic!("Error reading bytes from stream"),
-        }
+    // fn ready(&mut self, server: &mut server::Server<Connection>) {
+    //     let read_result = self.socket.read(self.stream.buffer());
+
+    //     match read_result {
+    //         Ok(length) => {
+    //             self.stream.handle_messages(length, server, self);
+    //         },
+    //         _ => panic!("Error reading bytes from stream"),
+    //     }
+    // }
+}
+
+impl broker::Subscriber for Connection {
+    fn new_message(&mut self, bytes: &[u8]) {
+        self.socket.write(bytes);
     }
 }

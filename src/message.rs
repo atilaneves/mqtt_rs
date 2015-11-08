@@ -5,7 +5,7 @@ pub enum MqttType {
     //Reserved = 0,
     Connect = 1,
     // ConnAck = 2,
-    // Publish = 3,
+    Publish = 3,
     // PubAck = 4,
     // PubRec = 5,
     // PubRel = 6,
