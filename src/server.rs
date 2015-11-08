@@ -113,7 +113,7 @@ impl broker::Subscriber for TestClient {
     fn new_message(&mut self, bytes: &[u8]) {
         self.msgs.push(bytes.to_vec());
         if message::message_type(bytes) == message::MqttType::Publish {
-            self.payloads.push(bytes.to_vec());
+            self.payloads.push(message::publish_payload(bytes).to_vec());
         }
     }
 }
