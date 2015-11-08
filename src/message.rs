@@ -13,7 +13,7 @@ pub enum MqttType {
     // PubRel = 6,
     // PubComp = 7,
     Subscribe = 8,
-    // SubAck = 9,
+    SubAck = 9,
     // Unsubscribe = 0xa,
     // UnsubAck = 0xb,
     PingReq = 0xc,
@@ -56,6 +56,12 @@ fn ping_type() {
 fn subscribe_type() {
     let subscribe_header = &[0x80, 0][0..];
     assert_eq!(message_type(subscribe_header), MqttType::Subscribe);
+}
+
+#[test]
+fn suback_type() {
+    let subscribe_header = &[0x90, 3, 0, 7, 1][0..];
+    assert_eq!(message_type(subscribe_header), MqttType::SubAck);
 }
 
 

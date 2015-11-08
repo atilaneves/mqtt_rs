@@ -41,8 +41,10 @@ impl<T: broker::Subscriber> Server<T> {
                 client.borrow_mut().new_message(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
             }
             message::MqttType::Publish => {
-                self.broker.publish(&message::publish_topic(bytes)[..],
-                                    &message::publish_payload(bytes)[..]);
+                self.broker.publish(&message::publish_topic(bytes)[..], bytes);
+            }
+            _ => {
+                panic!("Bad message");
             }
         }
     }
@@ -280,7 +282,6 @@ fn test_subscribe() {
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
-
 
     let pub_bytes = vec![
         0x3c, 0x0d, //fixed header
