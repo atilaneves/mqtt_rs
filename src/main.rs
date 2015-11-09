@@ -100,8 +100,6 @@ fn connection_ready(server: &mut server::Server<Connection>,
     let connection = connection.clone();
     let read_result = connection.borrow_mut().read(stream.buffer());
 
-    println!("Oh read result! {:?}", read_result);
-
     match read_result {
         Ok(length) => {
             stream.handle_messages(length, server, connection.clone());
