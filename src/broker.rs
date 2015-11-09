@@ -57,13 +57,12 @@ impl<T: Subscriber> Broker<T> {
         Broker { tree: Node::new() }
     }
 
-    pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
-        for topic in topics {
-            let sub_parts : Vec<&str> = topic.split("/").collect();
-            Self::ensure_node_exists(&sub_parts, &mut self.tree);
-            Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts, topic);
-        }
+    pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topic: &str) {
+        let sub_parts : Vec<&str> = topic.split("/").collect();
+        Self::ensure_node_exists(&sub_parts, &mut self.tree);
+        Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts, topic);
     }
+
 
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
         Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), &[], false);
@@ -192,13 +191,13 @@ fn test_subscribe() {
     broker.publish("topics/foo", &[0, 1, 2]);
     assert_eq!(subscriber.borrow().msgs.len(), 0);
 
-    broker.subscribe(subscriber.clone(), &["topics/foo"]);
+    broker.subscribe(subscriber.clone(), "topics/foo");
     broker.publish("topics/foo", &[0, 1, 9]); //should get this
     broker.publish("topics/bar", &[2, 4, 6]); //shouldn't get this
     assert_eq!(subscriber.borrow().msgs.len(), 1);
     assert_eq!(subscriber.borrow().msgs[0], &[0, 1, 9]);
 
-    broker.subscribe(subscriber.clone(), &["topics/bar"]);
+    broker.subscribe(subscriber.clone(), "topics/bar");
     broker.publish("topics/foo", &[1, 3, 5, 7]);
     broker.publish("topics/bar", &[2, 4]);
     assert_eq!(subscriber.borrow().msgs.len(), 3);
@@ -214,7 +213,7 @@ fn test_unsubscribe_all() {
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
-    broker.subscribe(subscriber.clone(), &["topics/foo"]);
+    broker.subscribe(subscriber.clone(), "topics/foo");
     broker.publish("topics/foo", &[0, 1, 9]); //should get this
     broker.publish("topics/bar", &[2, 4, 6]); //shouldn't get this
     assert_eq!(subscriber.borrow().msgs.len(), 1);
@@ -236,7 +235,8 @@ fn test_unsubscribe_one() {
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
-    broker.subscribe(subscriber.clone(), &["topics/foo", "topics/bar"]);
+    broker.subscribe(subscriber.clone(), "topics/foo");
+    broker.subscribe(subscriber.clone(), "topics/bar");
     broker.publish("topics/foo", &[0, 1, 9]); //should get this
     broker.publish("topics/bar", &[2, 4]); //should get this
     broker.publish("topics/baz", &[2, 4, 7, 11]); //shouldn't get this
@@ -262,7 +262,7 @@ fn test_matches(pub_topic: &str, sub_topic: &str) -> bool {
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
-    broker.subscribe(subscriber.clone(), &[sub_topic]);
+    broker.subscribe(subscriber.clone(), sub_topic);
     broker.publish(pub_topic, &[0, 1, 2]);
     let subscriber = subscriber.borrow();
     subscriber.msgs.len() == 1
@@ -300,19 +300,19 @@ fn test_subscribe_wildcards() {
     let subscriber3 = sub_rc3.clone();
     let subscriber4 = sub_rc4.clone();
 
-    broker.subscribe(subscriber1.clone(), &["topics/foo/+"]);
+    broker.subscribe(subscriber1.clone(), "topics/foo/+");
     broker.publish("topics/foo/bar", &[3]);
     broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
     assert_eq!(subscriber1.borrow().msgs, vec![&[3]]);
 
-    broker.subscribe(subscriber2.clone(), &["topics/foo/#"]);
+    broker.subscribe(subscriber2.clone(), "topics/foo/#");
     broker.publish("topics/foo/bar", &[3]);
     broker.publish("topics/bar/baz/boo", &[4]); //shouldn't get this one
     assert_eq!(subscriber1.borrow().msgs, vec![&[3], &[3]]);
     assert_eq!(subscriber2.borrow().msgs, vec![&[3]]);
 
-    broker.subscribe(subscriber3.clone(), &["topics/+/bar"]);
-    broker.subscribe(subscriber4.clone(), &["topics/#"]);
+    broker.subscribe(subscriber3.clone(), "topics/+/bar");
+    broker.subscribe(subscriber4.clone(), "topics/#");
 
     broker.publish("topics/foo/bar", &[3]);
     broker.publish("topics/bar/baz/boo", &[4]);

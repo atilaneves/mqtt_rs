@@ -11,6 +11,9 @@ class MqttServer
     unless @proc.nil?
       Process.kill('QUIT', @proc.pid)
       Process.wait(@proc.pid)
+      @proc.each_line do |l|
+        puts l
+      end
     end
   end
 end
