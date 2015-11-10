@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 //is same identity
 fn is_same<T>(lhs: &T, rhs: &T) -> bool {
-    lhs as *const T as i64 == rhs as *const T as i64
+    lhs as *const T == rhs as *const T
 }
 
 //the code below is horrible
