@@ -128,7 +128,8 @@ fn subscribe_msg_id_happy() {
 pub fn publish_topic(bytes: &[u8]) -> String {
     let topic_len = ((bytes[2] as u16) << 8) + bytes[3] as u16;
     let topic_len = topic_len as usize;
-    String::from_utf8(bytes[4 .. 4 + topic_len].to_vec()).unwrap()
+    String::from_utf8(bytes[4 .. 4 + topic_len].to_vec())
+        .expect("Could not convert publish topic to vec")
 }
 
 #[test]
@@ -183,7 +184,8 @@ pub fn subscribe_topics(bytes: &[u8]) -> Vec<String> {
     while slice.len() > 0 {
         let topic_len = (((slice[0] as u16) << 8) + slice[1] as u16) as usize;
         let topic_slice = &slice[2 .. 2 + topic_len];
-        res.push(String::from_utf8(topic_slice.to_vec()).unwrap());
+        res.push(String::from_utf8(topic_slice.to_vec())
+                 .expect("Could not convert subscribe topic to vec"));
         //first 2 for topic len, last 1 for qos
         slice = &slice[2 + topic_len + 1 .. ];
     }

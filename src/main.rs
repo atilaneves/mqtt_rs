@@ -14,10 +14,10 @@ const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
 fn main() {
     let address = "0.0.0.0:1883".parse().unwrap();
-    let listener = TcpListener::bind(&address).unwrap();
-    let mut event_loop = mio::EventLoop::new().unwrap();
-    event_loop.register(&listener, MQTT_SERVER_TOKEN).unwrap();
-    event_loop.run(&mut MioHandler::new(listener)).unwrap();
+    let listener = TcpListener::bind(&address).expect(&format!("Could not bind to {}", address));
+    let mut event_loop = mio::EventLoop::new().expect("Could not create MIO event loop");
+    event_loop.register(&listener, MQTT_SERVER_TOKEN).expect("Could not register listener");
+    event_loop.run(&mut MioHandler::new(listener)).expect("Could not run event loop");
 }
 
 
@@ -63,14 +63,16 @@ impl mio::Handler for MioHandler {
                     Ok(Some(socket)) => {
                         let token = self.connections
                             .insert_with(|_| Rc::new(RefCell::new(Connection::new(socket))))
-                            .unwrap();
-                        self.mqtt_streams.insert_with(|_| server::Stream::new()).unwrap();
+                            .expect("Could not insert new connection in slab");
+                        self.mqtt_streams.
+                            insert_with(|_| server::Stream::new())
+                            .expect("Could not insert new stream into slab");
                         let connection = &self.connections[token].clone();
                         event_loop.register_opt(
                             &connection.borrow().socket,
                             token,
                             mio::EventSet::readable(),
-                            mio::PollOpt::edge()).unwrap();
+                            mio::PollOpt::edge()).expect("Could not register connection with event loop");
                     }
                     Ok(None) => {
                         println!("The server socket wasn't actually ready");
@@ -87,9 +89,10 @@ impl mio::Handler for MioHandler {
                                                        &mut self.mqtt_streams[token],
                                                        self.connections[token].clone());
                 if !still_connected {
-                    event_loop.deregister(&self.connections[token].borrow().socket).unwrap();
+                    event_loop.deregister(&self.connections[token].borrow().socket)
+                        .expect("Could not deregister connection with event loop");
                     self.server.unsubscribe_all(self.connections[token].clone());
-                    self.connections.remove(token).unwrap();
+                    self.connections.remove(token).expect("Could not remove connection from slab");
                 }
             }
         }
@@ -123,6 +126,6 @@ impl Connection {
 
 impl broker::Subscriber for Connection {
     fn new_message(&mut self, bytes: &[u8]) {
-        self.socket.write(bytes).unwrap();
+        self.socket.write(bytes).expect("Error writing to socket");
     }
 }

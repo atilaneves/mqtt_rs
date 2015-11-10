@@ -87,7 +87,8 @@ impl<T: Subscriber> Broker<T> {
             node.children.insert(sub_parts[0].to_string(), Node::new());
         }
 
-        Self::ensure_node_exists(&sub_parts[1..], node.children.get_mut(part).unwrap());
+        Self::ensure_node_exists(&sub_parts[1..], node.children.get_mut(part)
+                                 .expect(&format!("Could not get node at {}", &part)));
     }
 
     fn add_subscription_to_node(tree: &mut Node<T>, subscriber: Rc<RefCell<T>>, sub_parts: &[&str], topic: &str) {
@@ -96,7 +97,8 @@ impl<T: Subscriber> Broker<T> {
         }
 
         let part = &sub_parts[0][..];
-        let node = tree.children.get_mut(part).unwrap();
+        let node = tree.children.get_mut(part)
+            .expect(&format!("Could not get node at {}", &part));
         let sub_parts = &sub_parts[1..];
 
         if sub_parts.len() == 0 {
@@ -125,7 +127,8 @@ impl<T: Subscriber> Broker<T> {
                 Some(node) => {
                     //so that "finance/#" matches "finance"
                     if pub_parts.len() == 0 && node.children.contains_key("#") {
-                        Self::publish_node(node.children.get("#").unwrap(), payload);
+                        Self::publish_node(node.children.get("#")
+                                           .expect(&format!("Could not get node at {}", &part)), payload);
                     }
 
                     if pub_parts.len() == 0 || part == "#" {

@@ -117,7 +117,7 @@ impl TestClient {
     }
 
     fn last_msg(&self) -> &[u8] {
-        self.msgs.last().unwrap()
+        self.msgs.last().expect("TestClient has no last message")
     }
 
     fn read(&self, buffer: &mut [u8], bytes: &[u8]) -> usize {
