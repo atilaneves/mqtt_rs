@@ -86,6 +86,9 @@ impl Stream {
             let mut total_len = HEADER_LEN;
             while slice.len() >= total_len {
                 total_len = message::remaining_length(slice) + HEADER_LEN;
+                if total_len > slice.len() {
+                    return true;
+                }
                 let msg = &slice[0 .. total_len];
                 slice = &slice[total_len..];
                 self.bytes_start += total_len;
@@ -347,4 +350,20 @@ fn test_subscribe() {
     stream.handle_messages(bytes_read, &mut server, client.clone());
 
     assert_eq!(client.borrow().payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
+}
+
+#[test]
+fn test_bug1() {
+    let mut server = Server::<TestClient>::new();
+    let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
+
+    //printed from when the bug occurred
+    let first = vec![
+        48, 30, 0, 12, 108, 111, 97, 100, 116, 101, 115, 116, 47, 49, 54, 54
+            ];
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &first);
+    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(client.borrow().payloads.len(), 0);
 }
