@@ -5,7 +5,6 @@ use std::io::Read;
 use std::rc::{Rc};
 use std::cell::{RefCell};
 use mio::tcp::*;
-
 mod server;
 mod broker;
 mod message;
@@ -60,10 +59,8 @@ impl mio::Handler for MioHandler {
             MQTT_SERVER_TOKEN => {
                 assert!(events.is_readable());
 
-                println!("Server socket is ready to accept a connetion");
                 match self.listener.accept() {
                     Ok(Some(socket)) => {
-                        println!("New mio client connection");
                         let token = self.connections
                             .insert_with(|_| Rc::new(RefCell::new(Connection::new(socket))))
                             .unwrap();
@@ -86,9 +83,14 @@ impl mio::Handler for MioHandler {
             }
             _ => {
                 assert!(events.is_readable());
-                connection_ready(&mut self.server,
-                                 &mut self.mqtt_streams[token],
-                                 self.connections[token].clone());
+                let still_connected = connection_ready(&mut self.server,
+                                                       &mut self.mqtt_streams[token],
+                                                       self.connections[token].clone());
+                if !still_connected {
+                    event_loop.deregister(&self.connections[token].borrow().socket).unwrap();
+                    self.server.unsubscribe_all(self.connections[token].clone());
+                    self.connections.remove(token).unwrap();
+                }
             }
         }
     }
@@ -96,13 +98,13 @@ impl mio::Handler for MioHandler {
 
 fn connection_ready(server: &mut server::Server<Connection>,
                     stream: &mut server::Stream,
-                    connection: Rc<RefCell<Connection>>) {
+                    connection: Rc<RefCell<Connection>>) -> bool {
     let connection = connection.clone();
     let read_result = connection.borrow_mut().read(stream.buffer());
 
     match read_result {
         Ok(length) => {
-            stream.handle_messages(length, server, connection.clone());
+            stream.handle_messages(length, server, connection.clone())
         },
         _ => panic!("Error reading bytes from stream"),
     }

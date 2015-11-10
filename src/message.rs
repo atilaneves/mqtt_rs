@@ -18,7 +18,7 @@ pub enum MqttType {
     // UnsubAck = 0xb,
     PingReq = 0xc,
     // PingResp = 0xd,
-    // Disconnect = 0xe,
+    Disconnect = 0xe,
 }
 
 pub fn message_type(bytes: &[u8]) -> MqttType {

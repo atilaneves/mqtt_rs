@@ -19,16 +19,18 @@ impl<T: broker::Subscriber> Server<T> {
         Server { broker: broker::Broker::new() }
     }
 
-    fn new_message(&mut self, client: Rc<RefCell<T>>, bytes: &[u8]) {
+    fn new_message(&mut self, client: Rc<RefCell<T>>, bytes: &[u8]) -> bool {
         let message_type = message::message_type(bytes);
         match message_type {
             message::MqttType::Connect => {
                 let client = client.clone();
                 client.borrow_mut().new_message(&CONNACK_OK);
+                true
             }
             message::MqttType::PingReq => {
                 let client = client.clone();
                 client.borrow_mut().new_message(&PING_RESP);
+                true
             }
             message::MqttType::Subscribe => {
                 for topic in message::subscribe_topics(bytes) {
@@ -39,14 +41,23 @@ impl<T: broker::Subscriber> Server<T> {
                 let qos: u8 = 0;
                 let client = client.clone();
                 client.borrow_mut().new_message(&[0x90u8, 3, 0, msg_id as u8, qos][..]);
+                true
             }
             message::MqttType::Publish => {
                 self.broker.publish(&message::publish_topic(bytes)[..], bytes);
+                true
+            }
+            message::MqttType::Disconnect => {
+                false
             }
             _ => {
                 panic!("Bad message");
             }
         }
+    }
+
+    pub fn unsubscribe_all(&mut self, client: Rc<RefCell<T>>) {
+        self.broker.unsubscribe_all(client);
     }
 }
 
@@ -64,8 +75,11 @@ impl Stream {
         &mut self.buffer[self.bytes_start .. ]
     }
 
-    pub fn handle_messages<T: broker::Subscriber>(&mut self, bytes_read: usize, server: &mut Server<T>, client: Rc<RefCell<T>>) {
+    pub fn handle_messages<T: broker::Subscriber>(&mut self, bytes_read:
+                                                  usize, server: &mut Server<T>,
+                                                  client: Rc<RefCell<T>>) -> bool {
         let vec : Vec<u8>;
+        let mut res = true;
         {
             let mut slice = &self.buffer[0 .. self.bytes_start + bytes_read];
             const HEADER_LEN: usize = 2;
@@ -75,7 +89,7 @@ impl Stream {
                 let msg = &slice[0 .. total_len];
                 slice = &slice[total_len..];
                 self.bytes_start += total_len;
-                server.new_message(client.clone(), msg);
+                res = res && server.new_message(client.clone(), msg);
             }
             vec = slice.to_vec();
         }
@@ -86,6 +100,7 @@ impl Stream {
         }
 
         self.bytes_start = vec.len();
+        res
     }
 }
 
