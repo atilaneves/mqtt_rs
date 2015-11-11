@@ -92,6 +92,7 @@ impl mio::Handler for MioHandler {
                     event_loop.deregister(&self.connections[token].borrow().socket)
                         .expect("Could not deregister connection with event loop");
                     self.server.unsubscribe_all(self.connections[token].clone());
+                    self.connections[token].borrow_mut().socket.flush().expect("Could not flush socket");
                     self.connections.remove(token).expect("Could not remove connection from slab");
                 }
             }
@@ -130,6 +131,6 @@ impl Connection {
 
 impl broker::Subscriber for Connection {
     fn new_message(&mut self, bytes: &[u8]) {
-        self.socket.write(bytes).expect("Error writing to socket");
+        self.socket.write_all(bytes).expect("Error writing to socket");
     }
 }

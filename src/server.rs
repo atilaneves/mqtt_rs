@@ -4,7 +4,6 @@ use broker;
 use std::rc::{Rc};
 use std::cell::{RefCell};
 
-
 pub struct Server<T: broker::Subscriber> {
     broker: broker::Broker<T>,
 }
@@ -51,7 +50,8 @@ impl<T: broker::Subscriber> Server<T> {
                 false
             }
             _ => {
-                panic!("Bad message");
+                println!("Bad message {:?}", &bytes);
+                true
             }
         }
     }
