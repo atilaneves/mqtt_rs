@@ -68,11 +68,15 @@ pub struct Stream {
 
 impl Stream {
     pub fn new() -> Self {
-        Stream { buffer: vec![0; 1024], bytes_start: 0 }
+        Stream { buffer: vec![0; 1024 * 128], bytes_start: 0 }
     }
 
     pub fn buffer(&mut self) -> &mut [u8] {
         &mut self.buffer[self.bytes_start .. ]
+    }
+
+    pub fn total_buffer_len(&self) -> usize {
+        return self.buffer.len();
     }
 
     pub fn handle_messages<T: broker::Subscriber>(&mut self, bytes_read:
@@ -85,7 +89,8 @@ impl Stream {
             const HEADER_LEN: usize = 2;
             let mut total_len = HEADER_LEN;
             while slice.len() >= total_len {
-                total_len = message::remaining_length(slice) + HEADER_LEN;
+
+                total_len = message::total_length(slice);
                 if total_len > slice.len() {
                     return true;
                 }
@@ -93,6 +98,10 @@ impl Stream {
                 slice = &slice[total_len..];
                 self.bytes_start += total_len;
                 res = res && server.new_message(client.clone(), msg);
+
+                if slice.len() >= 2 {
+                    total_len = message::total_length(slice);
+                }
             }
             vec = slice.to_vec();
         }
@@ -308,7 +317,7 @@ fn test_subscribe() {
         'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
         ];
     let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
-    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
     assert_eq!(client.borrow().payloads.len(), 0);
 
     let sub_bytes = vec![
@@ -320,7 +329,7 @@ fn test_subscribe() {
         0x02, //qos
         ];
     let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
-    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
 
     let pub_bytes = vec![
         0x3c, 0x0d, //fixed header
@@ -329,7 +338,7 @@ fn test_subscribe() {
         'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
         ];
     let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
-    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
 
     let pub_bytes = vec![
         0x3c, 0x0d, //fixed header
@@ -338,16 +347,19 @@ fn test_subscribe() {
         'f' as u8, 'o' as u8, 'o' as u8,//payload
         ];
     let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
-    stream.handle_messages(bytes_read, &mut server, client.clone());
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
 
     let pub_bytes = vec![
         0x3c, 0x0c, //fixed header
         0x00, 0x05, 't' as u8, 'h' as u8, 'i' as u8, 'r' as u8, 'd' as u8,//topic name
         0x00, 0x21, //message ID
         'f' as u8, 'o' as u8, 'o' as u8,//payload
+        //--
+        0xe0, 0, //disconnect
         ];
     let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
-    stream.handle_messages(bytes_read, &mut server, client.clone());
+    //false since last msg is disconnect
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), false);
 
     assert_eq!(client.borrow().payloads, vec![b"borg".to_vec(), b"foo".to_vec()]);
 }

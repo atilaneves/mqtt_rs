@@ -217,3 +217,8 @@ fn test_subscribe_topics2() {
         ];
     assert_eq!(subscribe_topics(&sub_bytes[..]), vec!["firs".to_string(), "second".to_string()]);
 }
+
+
+pub fn total_length(bytes: &[u8]) -> usize {
+    return remaining_length(bytes) + HEADER_LEN;
+}
