@@ -107,6 +107,10 @@ fn connection_ready(server: &mut server::Server<Connection>,
 
     match read_result {
         Ok(length) => {
+            if length >= stream.total_buffer_len() {
+                panic!(format!("Too many bytes ({}) for puny stream buffer ({})",
+                               length, stream.total_buffer_len()));
+            }
             stream.handle_messages(length, server, connection.clone())
         },
         _ => panic!("Error reading bytes from stream"),
