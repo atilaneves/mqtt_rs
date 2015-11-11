@@ -7,5 +7,10 @@ authors = ["Atila Neves <aalvesne@cisco.com>"]
 opt-level = 0
 debug = true
 
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+
 [dependencies]
 mio = "0.4.1"
