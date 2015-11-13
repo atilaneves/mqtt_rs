@@ -64,6 +64,12 @@ fn suback_type() {
     assert_eq!(message_type(subscribe_header), MqttType::SubAck);
 }
 
+#[test]
+fn disconnect_type() {
+    let bytes = &[224, 0][0..];
+    assert_eq!(message_type(bytes), MqttType::Disconnect);
+
+}
 
 pub fn remaining_length(bytes: &[u8]) -> usize {
     if bytes.len() < 2 {
