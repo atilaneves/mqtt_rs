@@ -61,6 +61,12 @@ impl mio::Handler for MioHandler {
 
                 match self.listener.accept() {
                     Ok(Some(socket)) => {
+                        //the reason why I'm doing the horrible thing of two slabs and two
+                        //insertions per connection is to avoid borrowing problems.
+                        //That way the mqtt stream and the connection have distinct lifetimes
+                        //(though not really) and be passed as mutable borrow simultaneously
+                        //to connection_ready
+
                         let token = self.connections
                             .insert_with(|_| Rc::new(RefCell::new(Connection::new(socket))))
                             .expect("Could not insert new connection in slab");
