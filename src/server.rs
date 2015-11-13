@@ -92,6 +92,7 @@ impl Stream {
 
                 total_len = message::total_length(slice);
                 if total_len > slice.len() {
+                    self.bytes_start += bytes_read;
                     return true;
                 }
                 let msg = &slice[0 .. total_len];
@@ -378,4 +379,43 @@ fn test_bug1() {
     let bytes_read = client.borrow_mut().read(stream.buffer(), &first);
     stream.handle_messages(bytes_read, &mut server, client.clone());
     assert_eq!(client.borrow().payloads.len(), 0);
+}
+
+
+
+#[test]
+fn test_publish_in_two_msgs() {
+        let mut server = Server::<TestClient>::new();
+    let mut stream = Stream::new();
+    let client = Rc::new(RefCell::new(TestClient::new()));
+    let client = client.clone();
+
+    let sub_bytes = vec![
+        0x8b, 0x13, //fixed header
+        0x00, 0x21, //message ID
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,
+        0x01, //qos
+        0x00, 0x06, 's' as u8, 'e' as u8, 'c' as u8, 'o' as u8, 'n' as u8, 'd' as u8,
+        0x02, //qos
+        ];
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &sub_bytes);
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
+
+    //1st part of message
+    let pub_bytes = vec![
+        0x3c, 0x0d, //fixed header
+        0x00, 0x05, 'f' as u8, 'i' as u8, 'r' as u8, 's' as u8, 't' as u8,//topic name
+        ];
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
+    assert_eq!(client.borrow().payloads.len(), 0);
+
+    //2nd part of message
+    let pub_bytes = vec![
+        0x00, 0x21, //message ID
+        'b' as u8, 'o' as u8, 'r' as u8, 'g' as u8, //payload
+        ];
+    let bytes_read = client.borrow_mut().read(stream.buffer(), &pub_bytes);
+    assert_eq!(stream.handle_messages(bytes_read, &mut server, client.clone()), true);
+    assert_eq!(client.borrow().payloads.len(), 1);
 }
