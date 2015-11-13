@@ -68,7 +68,7 @@ pub struct Stream {
 
 impl Stream {
     pub fn new() -> Self {
-        Stream { buffer: vec![0; 1024 * 128], bytes_start: 0 }
+        Stream { buffer: vec![0; 1024 * 512], bytes_start: 0 }
     }
 
     pub fn buffer(&mut self) -> &mut [u8] {
@@ -76,7 +76,7 @@ impl Stream {
     }
 
     pub fn total_buffer_len(&self) -> usize {
-        return self.buffer.len();
+        self.buffer.len()
     }
 
     pub fn handle_messages<T: broker::Subscriber>(&mut self, bytes_read:
