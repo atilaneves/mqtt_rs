@@ -2,6 +2,7 @@ language: rust
 install:
   - gem install bundler
   - bundle install
+  - export RUST_BACKTRACE=1
 
 script:
   - cargo test
