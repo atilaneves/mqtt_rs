@@ -385,7 +385,7 @@ fn test_bug1() {
 
 #[test]
 fn test_publish_in_two_msgs() {
-        let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new();
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();

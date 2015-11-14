@@ -63,7 +63,6 @@ impl<T: Subscriber> Broker<T> {
         Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts, topic);
     }
 
-
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
         Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), &[], false);
     }
