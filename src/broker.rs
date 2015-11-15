@@ -24,6 +24,8 @@ pub trait Subscriber {
 
 pub struct Broker<T: Subscriber> {
     tree: Node<T>,
+    use_cache: bool,
+    cache: HashMap<String, Vec<Rc<RefCell<T>>>>,
 }
 
 struct Node<T: Subscriber> {
@@ -53,27 +55,39 @@ impl<T: Subscriber> Node<T> {
 }
 
 impl<T: Subscriber> Broker<T> {
-    pub fn new() -> Self {
-        Broker { tree: Node::new() }
+    pub fn new(use_cache: bool) -> Self {
+        Broker { tree: Node::new(), use_cache: use_cache, cache: HashMap::new() }
     }
 
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topic: &str) {
+        self.invalidate_cache();
         let sub_parts : Vec<&str> = topic.split("/").collect();
         Self::ensure_node_exists(&sub_parts, &mut self.tree);
         Self::add_subscription_to_node(&mut self.tree, subscriber.clone(), &sub_parts, topic);
     }
 
     pub fn unsubscribe_all(&mut self, subscriber: Rc<RefCell<T>>) {
+        self.invalidate_cache();
         Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), &[], false);
     }
 
     pub fn unsubscribe(&mut self, subscriber: Rc<RefCell<T>>, topics: &[&str]) {
+        self.invalidate_cache();
         Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics, true);
     }
 
-    pub fn publish(&self, topic: &str, payload: &[u8]) {
+    pub fn publish(&mut self, topic: &str, payload: &[u8]) {
+        if self.use_cache {
+            if let Some(subscribers) = self.cache.get(topic) {
+                for subscriber in subscribers {
+                    subscriber.borrow_mut().new_message(payload);
+                }
+                return;
+            }
+        }
+
         let pub_parts : Vec<&str> = topic.split("/").collect();
-        Self::publish_impl(&self.tree, &pub_parts, &payload);
+        Self::publish_impl(&self.tree, &pub_parts, &payload, topic, self.use_cache, &mut self.cache);
     }
 
     fn ensure_node_exists(sub_parts: &[&str], node: &mut Node<T>) {
@@ -107,7 +121,7 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
-    fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8]) {
+    fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8], topic: &str, use_cache: bool, cache: &mut HashMap<String, Vec<Rc<RefCell<T>>>>) {
         if pub_parts.len() < 1 {
             return;
         }
@@ -127,23 +141,37 @@ impl<T: Subscriber> Broker<T> {
                     //so that "finance/#" matches "finance"
                     if pub_parts.len() == 0 && node.children.contains_key("#") {
                         Self::publish_node(node.children.get("#")
-                                           .expect(&format!("Could not get node at {}", &part)), payload);
+                                           .expect(&format!("Could not get node at {}", &part)),
+                                           payload, topic, use_cache, cache);
                     }
 
                     if pub_parts.len() == 0 || part == "#" {
-                        Self::publish_node(&node, payload);
+                        Self::publish_node(&node, payload, topic, use_cache, cache);
                     }
 
-                    Self::publish_impl(&node, pub_parts, payload);
+                    Self::publish_impl(&node, pub_parts, payload, topic, use_cache, cache);
                 }
             }
         }
     }
 
-    fn publish_node(node: &Node<T>, payload: &[u8]) {
+    fn publish_node(node: &Node<T>, payload: &[u8], topic: &str, use_cache: bool, cache: &mut HashMap<String, Vec<Rc<RefCell<T>>>>) {
         for subscription in &node.leaves {
             let subscriber = subscription.subscriber.clone();
             subscriber.borrow_mut().new_message(payload);
+            if use_cache {
+                if !cache.contains_key(topic) {
+                    cache.insert(topic.to_string(), vec![]);
+                }
+                match cache.get_mut(topic) {
+                    None => {
+                        panic!("Impossible to not have key")
+                    }
+                    Some(subscribers) => {
+                        subscribers.push(subscriber.clone());
+                    }
+                }
+            }
         }
     }
 
@@ -164,6 +192,11 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
+    fn invalidate_cache(&mut self) {
+        if self.use_cache {
+            self.cache = HashMap::new();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -187,7 +220,7 @@ impl Subscriber for TestSubscriber {
 
 #[test]
 fn test_subscribe() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
     broker.publish("topics/foo", &[0, 1, 2]);
@@ -211,7 +244,7 @@ fn test_subscribe() {
 
 #[test]
 fn test_unsubscribe_all() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -233,7 +266,7 @@ fn test_unsubscribe_all() {
 
 #[test]
 fn test_unsubscribe_one() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -260,7 +293,7 @@ fn test_unsubscribe_one() {
 
 #[cfg(test)]
 fn test_matches(pub_topic: &str, sub_topic: &str) -> bool {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -291,7 +324,7 @@ fn test_wildcards() {
 
 #[test]
 fn test_subscribe_wildcards() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc1 = Rc::new(RefCell::new(TestSubscriber::new()));
     let sub_rc2 = Rc::new(RefCell::new(TestSubscriber::new()));
     let sub_rc3 = Rc::new(RefCell::new(TestSubscriber::new()));
