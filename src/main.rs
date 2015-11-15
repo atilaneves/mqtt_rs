@@ -17,7 +17,7 @@ fn main() {
     let listener = TcpListener::bind(&address).expect(&format!("Could not bind to {}", address));
     let mut event_loop = mio::EventLoop::new().expect("Could not create MIO event loop");
     event_loop.register(&listener, MQTT_SERVER_TOKEN).expect("Could not register listener");
-    event_loop.run(&mut MioHandler::new(listener)).expect("Could not run event loop");
+    event_loop.run(&mut MioHandler::new(listener, std::env::args().len() > 1)).expect("Could not run event loop");
 }
 
 
@@ -33,7 +33,7 @@ struct Connection {
 }
 
 impl MioHandler {
-    fn new(listener: TcpListener) -> Self {
+    fn new(listener: TcpListener, use_cache: bool) -> Self {
         let max_conns = 1024 * 32;
         let connections_slab = mio::util::Slab::new_starting_at(mio::Token(1), max_conns);
         let mqtt_stream_slab = mio::util::Slab::new_starting_at(mio::Token(1), max_conns);
@@ -42,7 +42,7 @@ impl MioHandler {
             listener: listener,
             connections: connections_slab,
             mqtt_streams: mqtt_stream_slab,
-            server: server::Server::new(false),
+            server: server::Server::new(use_cache),
         }
     }
 }
