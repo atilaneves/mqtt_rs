@@ -132,6 +132,7 @@ fn subscribe_msg_id_happy() {
 }
 
 pub fn publish_topic(bytes: &[u8]) -> String {
+    //only works when there's no msg id
     let topic_len = ((bytes[2] as u16) << 8) + bytes[3] as u16;
     let topic_len = topic_len as usize;
     String::from_utf8(bytes[4 .. 4 + topic_len].to_vec())
