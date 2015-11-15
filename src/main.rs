@@ -124,8 +124,11 @@ fn connection_ready(server: &mut server::Server<Connection>,
                                length, stream.total_buffer_len()));
             }
             stream.handle_messages(length, server, connection.clone())
-        },
-        _ => panic!("Error reading bytes from stream"),
+        }
+        _ => {
+            println!("Error reading bytes from stream");
+            false
+        }
     }
 }
 
