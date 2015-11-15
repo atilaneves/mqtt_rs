@@ -76,7 +76,7 @@ impl<T: Subscriber> Broker<T> {
         Self::unsubscribe_impl(&mut self.tree, subscriber.clone(), topics, true);
     }
 
-    pub fn publish(&self, topic: &str, payload: &[u8]) {
+    pub fn publish(&mut self, topic: &str, payload: &[u8]) {
         if self.use_cache {
             if let Some(subscribers) = self.cache.get(topic) {
                 for subscriber in subscribers {
@@ -87,7 +87,7 @@ impl<T: Subscriber> Broker<T> {
         }
 
         let pub_parts : Vec<&str> = topic.split("/").collect();
-        Self::publish_impl(&self.tree, &pub_parts, &payload);
+        Self::publish_impl(&self.tree, &pub_parts, &payload, topic, self.use_cache, &mut self.cache);
     }
 
     fn ensure_node_exists(sub_parts: &[&str], node: &mut Node<T>) {
@@ -121,7 +121,7 @@ impl<T: Subscriber> Broker<T> {
         }
     }
 
-    fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8]) {
+    fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8], topic: &str, use_cache: bool, cache: &mut HashMap<String, Vec<Rc<RefCell<T>>>>) {
         if pub_parts.len() < 1 {
             return;
         }
@@ -141,23 +141,37 @@ impl<T: Subscriber> Broker<T> {
                     //so that "finance/#" matches "finance"
                     if pub_parts.len() == 0 && node.children.contains_key("#") {
                         Self::publish_node(node.children.get("#")
-                                           .expect(&format!("Could not get node at {}", &part)), payload);
+                                           .expect(&format!("Could not get node at {}", &part)),
+                                           payload, topic, use_cache, cache);
                     }
 
                     if pub_parts.len() == 0 || part == "#" {
-                        Self::publish_node(&node, payload);
+                        Self::publish_node(&node, payload, topic, use_cache, cache);
                     }
 
-                    Self::publish_impl(&node, pub_parts, payload);
+                    Self::publish_impl(&node, pub_parts, payload, topic, use_cache, cache);
                 }
             }
         }
     }
 
-    fn publish_node(node: &Node<T>, payload: &[u8]) {
+    fn publish_node(node: &Node<T>, payload: &[u8], topic: &str, use_cache: bool, cache: &mut HashMap<String, Vec<Rc<RefCell<T>>>>) {
         for subscription in &node.leaves {
             let subscriber = subscription.subscriber.clone();
             subscriber.borrow_mut().new_message(payload);
+            if use_cache {
+                if !cache.contains_key(topic) {
+                    cache.insert(topic.to_string(), vec![]);
+                }
+                match cache.get_mut(topic) {
+                    None => {
+                        panic!("Impossible to not have key")
+                    }
+                    Some(subscribers) => {
+                        subscribers.push(subscriber.clone());
+                    }
+                }
+            }
         }
     }
 
