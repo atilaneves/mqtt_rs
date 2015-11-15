@@ -42,7 +42,7 @@ impl MioHandler {
             listener: listener,
             connections: connections_slab,
             mqtt_streams: mqtt_stream_slab,
-            server: server::Server::new(),
+            server: server::Server::new(false),
         }
     }
 }

@@ -14,8 +14,8 @@ static PING_RESP : [u8; 2] = [0xd0, 0];
 
 
 impl<T: broker::Subscriber> Server<T> {
-    pub fn new() -> Self {
-        Server { broker: broker::Broker::new() }
+    pub fn new(use_cache: bool) -> Self {
+        Server { broker: broker::Broker::new(use_cache) }
     }
 
     fn new_message(&mut self, client: Rc<RefCell<T>>, bytes: &[u8]) -> bool {
@@ -167,7 +167,7 @@ fn test_connect() {
         0x00, 0x02, 'p' as u8, 'w' as u8, // password
         ][0..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let client = Rc::new(RefCell::new(TestClient::new()));
 
     server.new_message(client.clone(), connect_bytes);
@@ -180,7 +180,7 @@ fn test_connect() {
 fn test_ping() {
     let ping_bytes =  &[0xc0u8, 0][0..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
 
@@ -194,7 +194,7 @@ fn test_ping() {
 fn test_pings_all_at_once() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0, 0xc0, 0, 0xc0, 0][0..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -213,7 +213,7 @@ fn test_pings_all_at_once() {
 fn test_pings_multiple_time_unbroken() {
     let ping_bytes = &[0xc0u8, 0, 0xc0, 0][0..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -237,7 +237,7 @@ fn test_pings_broken() {
     let ping_fst = &[0xc0u8][0..];
     let ping_snd = &[0u8][0..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -293,7 +293,7 @@ fn test_suback_bytes() {
     let qos: u8 = 0;
     let suback_bytes = &[0x90u8, 3, 0, 42, qos][..];
 
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -306,7 +306,7 @@ fn test_suback_bytes() {
 
 #[test]
 fn test_subscribe() {
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -367,7 +367,7 @@ fn test_subscribe() {
 
 #[test]
 fn test_bug1() {
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();
@@ -385,7 +385,7 @@ fn test_bug1() {
 
 #[test]
 fn test_publish_in_two_msgs() {
-    let mut server = Server::<TestClient>::new();
+    let mut server = Server::<TestClient>::new(false);
     let mut stream = Stream::new();
     let client = Rc::new(RefCell::new(TestClient::new()));
     let client = client.clone();

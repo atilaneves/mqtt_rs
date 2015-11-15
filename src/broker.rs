@@ -55,8 +55,8 @@ impl<T: Subscriber> Node<T> {
 }
 
 impl<T: Subscriber> Broker<T> {
-    pub fn new() -> Self {
-        Broker { tree: Node::new(), use_cache: false, cache: HashMap::new() }
+    pub fn new(use_cache: bool) -> Self {
+        Broker { tree: Node::new(), use_cache: use_cache, cache: HashMap::new() }
     }
 
     pub fn subscribe(&mut self, subscriber: Rc<RefCell<T>>, topic: &str) {
@@ -220,7 +220,7 @@ impl Subscriber for TestSubscriber {
 
 #[test]
 fn test_subscribe() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
     broker.publish("topics/foo", &[0, 1, 2]);
@@ -244,7 +244,7 @@ fn test_subscribe() {
 
 #[test]
 fn test_unsubscribe_all() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -266,7 +266,7 @@ fn test_unsubscribe_all() {
 
 #[test]
 fn test_unsubscribe_one() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -293,7 +293,7 @@ fn test_unsubscribe_one() {
 
 #[cfg(test)]
 fn test_matches(pub_topic: &str, sub_topic: &str) -> bool {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc = Rc::new(RefCell::new(TestSubscriber::new()));
     let subscriber = sub_rc.clone();
 
@@ -324,7 +324,7 @@ fn test_wildcards() {
 
 #[test]
 fn test_subscribe_wildcards() {
-    let mut broker = Broker::<TestSubscriber>::new();
+    let mut broker = Broker::<TestSubscriber>::new(false);
     let sub_rc1 = Rc::new(RefCell::new(TestSubscriber::new()));
     let sub_rc2 = Rc::new(RefCell::new(TestSubscriber::new()));
     let sub_rc3 = Rc::new(RefCell::new(TestSubscriber::new()));
