@@ -132,26 +132,19 @@ impl<T: Subscriber> Broker<T> {
 
         for part in vec![part, "#", "+"] {
 
-            let node = tree.children.get(part);
-
-            match node {
-                None => {
-                    continue; //didn't find a subscriber
-                },
-                Some(node) => {
-                    //so that "finance/#" matches "finance"
-                    if pub_parts.len() == 0 && node.children.contains_key("#") {
-                        Self::publish_node(node.children.get("#")
-                                           .expect(&format!("Could not get node at {}", &part)),
-                                           payload, topic, use_cache, cache);
-                    }
-
-                    if pub_parts.len() == 0 || part == "#" {
-                        Self::publish_node(&node, payload, topic, use_cache, cache);
-                    }
-
-                    Self::publish_impl(&node, pub_parts, payload, topic, use_cache, cache);
+            if let Some(node) = tree.children.get(part) {
+                if pub_parts.len() == 0 || part == "#" {
+                    Self::publish_node(&node, payload, topic, use_cache, cache);
                 }
+
+                //so that "finance/#" matches "finance"
+                if pub_parts.len() == 0 && node.children.contains_key("#") {
+                    Self::publish_node(node.children.get("#")
+                                       .expect(&format!("Could not get node at {}", &part)),
+                                       payload, topic, use_cache, cache);
+                }
+
+                Self::publish_impl(&node, pub_parts, payload, topic, use_cache, cache);
             }
         }
     }
@@ -164,13 +157,8 @@ impl<T: Subscriber> Broker<T> {
                 if !cache.contains_key(topic) {
                     cache.insert(topic.to_string(), vec![]);
                 }
-                match cache.get_mut(topic) {
-                    None => {
-                        panic!("Impossible to not have key")
-                    }
-                    Some(subscribers) => {
-                        subscribers.push(subscriber.clone());
-                    }
+                if let Some(subscribers) = cache.get_mut(topic) {
+                    subscribers.push(subscriber.clone());
                 }
             }
         }
