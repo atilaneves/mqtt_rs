@@ -15,9 +15,6 @@ static PING_RESP : [u8; 2] = [0xd0, 0];
 
 impl<T: broker::Subscriber> Server<T> {
     pub fn new(use_cache: bool) -> Self {
-        if use_cache {
-            println!("Using the cache");
-        }
         Server { broker: broker::Broker::new(use_cache) }
     }
 
