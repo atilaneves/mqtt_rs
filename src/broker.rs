@@ -77,15 +77,6 @@ impl<T: Subscriber> Broker<T> {
     }
 
     pub fn publish(&mut self, topic: &str, payload: &[u8]) {
-        if self.use_cache {
-            if let Some(subscribers) = self.cache.get(topic) {
-                for subscriber in subscribers {
-                    subscriber.borrow_mut().new_message(payload);
-                }
-                return;
-            }
-        }
-
         let pub_parts : Vec<&str> = topic.split("/").collect();
         Self::publish_impl(&self.tree, &pub_parts, &payload, topic, self.use_cache, &mut self.cache);
     }
@@ -122,6 +113,16 @@ impl<T: Subscriber> Broker<T> {
     }
 
     fn publish_impl(tree: &Node<T>, pub_parts: &[&str], payload: &[u8], topic: &str, use_cache: bool, cache: &mut HashMap<String, Vec<Rc<RefCell<T>>>>) {
+
+        if use_cache {
+            if let Some(subscribers) = cache.get(topic) {
+                for subscriber in subscribers {
+                    subscriber.borrow_mut().new_message(payload);
+                }
+                return;
+            }
+        }
+
         if pub_parts.len() < 1 {
             return;
         }
