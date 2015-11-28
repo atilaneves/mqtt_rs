@@ -2,6 +2,8 @@
 name = "mqtt"
 version = "0.0.1"
 authors = ["Atila Neves <aalvesne@cisco.com>"]
+links = "mqttd"
+build = "build.rs"
 
 [profile.dev]
 opt-level = 0
