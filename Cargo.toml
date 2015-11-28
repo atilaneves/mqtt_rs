@@ -16,3 +16,4 @@ lto = true
 
 [dependencies]
 mio = "0.4.1"
+libc = "*"

@@ -1,10 +1,13 @@
 extern crate mio;
+extern crate libc;
 
 use std::io::Write;
 use std::io::Read;
 use std::rc::{Rc};
 use std::cell::{RefCell};
 use mio::tcp::*;
+use libc::{c_void};
+
 mod server;
 mod broker;
 mod message;
@@ -12,13 +15,41 @@ mod message;
 
 const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
+#[repr(C)]
+struct Span {
+    ptr: *const u8,
+    size: i64,
+}
+
 extern {
     fn rt_init();
     fn rt_term();
+    fn startMqttServer(useCache: bool);
+    fn newDlangSubscriber(connection: *mut c_void) -> *mut c_void;
+    fn getWriteableBuffer(subscriber: *mut c_void) -> Span;
 }
+
+
+#[no_mangle]
+fn rust_new_message(context: *mut c_void, bytes: Span) {
+    let socket = context as *mut mio::tcp::TcpStream;
+    unsafe {
+        let bytes = std::slice::from_raw_parts(bytes.ptr, bytes.size as usize);
+        (*socket).write_all(bytes).expect("Error writing to socket");
+    }
+}
+
+#[no_mangle]
+fn rust_disconnect(context: *mut c_void) {
+}
+
+
 
 fn main() {
     unsafe { rt_init(); }
+
+    let use_cache = std::env::args().len() == 1;
+    unsafe { startMqttServer(use_cache); }
 
     let address = "0.0.0.0:1883".parse().unwrap();
     let listener = TcpListener::bind(&address).expect(&format!("Could not bind to {}", address));
@@ -39,6 +70,8 @@ struct MioHandler {
 
 struct Connection {
     socket: mio::tcp::TcpStream,
+    connected: bool,
+    dlang_subscriber: *mut c_void,
 }
 
 impl MioHandler {
@@ -106,8 +139,8 @@ impl mio::Handler for MioHandler {
             _ => {
                 assert!(events.is_readable());
                 let still_connected = connection_ready_old(&mut self.server,
-                                                       &mut self.mqtt_streams[token],
-                                                       self.connections[token].clone());
+                                                           &mut self.mqtt_streams[token],
+                                                           self.connections[token].clone());
                 if !still_connected {
                     event_loop.deregister(&self.connections[token].borrow().socket)
                         .expect("Could not deregister connection with event loop");
@@ -141,10 +174,17 @@ fn connection_ready_old(server: &mut server::Server<Connection>,
     }
 }
 
+fn connection_ready() {
+}
+
 
 impl Connection {
     fn new(socket: mio::tcp::TcpStream) -> Self {
-        Connection { socket: socket }
+        unsafe {
+            let ptr = &socket as *const mio::tcp::TcpStream;
+            let ptr = ptr as *mut c_void;
+            Connection { socket: socket, connected: true, dlang_subscriber: newDlangSubscriber(ptr) }
+        }
     }
 
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {

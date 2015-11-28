@@ -10,25 +10,31 @@ struct Span {
     long size;
 }
 
-extern(C++) {
+extern(C) {
+    void rust_new_message(void* context, in Span bytes);
+    void rust_disconnect(void* context);
 
-    interface CppConnection {
-        void newMessage(const Span bytes);
-        void disconnect();
-    }
-
-    interface DlangSubscriber {
-        Span getWriteableBuffer();
-        const(char)* handleMessages(long numBytesRead);
-    }
 
     void startMqttServer(bool useCache) {
         GC.disable;
         gServer = typeof(gServer)(useCache ? Yes.useCache : No.useCache);
     }
 
-    DlangSubscriber newDlangSubscriber(CppConnection connection) {
+    Subscriber* newDlangSubscriber(void* connection) {
         return new Subscriber(connection);
+    }
+
+    Span getWriteableBuffer(Subscriber* subscriber) {
+        return arrayToSpan(subscriber._stream.buffer());
+    }
+
+    const(char*) handleMessages(Subscriber* subscriber, long numBytesRead ) {
+        try {
+            subscriber._stream.handleMessages(numBytesRead, gServer, subscriber._subscriber);
+            return null;
+        } catch(Throwable t) {
+            return t.msg.toStringz();
+        }
     }
 }
 
@@ -36,8 +42,9 @@ private inout(Span) arrayToSpan(inout(ubyte)[] bytes) {
     return inout(Span)(cast(inout(ubyte)*)bytes.ptr, bytes.length);
 }
 
-private class Subscriber: DlangSubscriber {
-    this(CppConnection connection) {
+
+private struct Subscriber {
+    this(void* connection) {
         _stream = MqttStream(512 * 1024);
         _subscriber = SubscriberImpl(connection);
     }
@@ -46,14 +53,14 @@ private class Subscriber: DlangSubscriber {
 
         void newMessage(in ubyte[] bytes) {
             assert(bytes.length > 0);
-            _cppConnection.newMessage(arrayToSpan(bytes));
+            rust_new_message(_rustConnection, arrayToSpan(bytes));
         }
 
         void disconnect() {
-            _cppConnection.disconnect();
+            rust_disconnect(_rustConnection);
         }
 
-        CppConnection _cppConnection;
+        void* _rustConnection;
     }
 
     extern(C++) {
