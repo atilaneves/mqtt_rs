@@ -25,13 +25,15 @@ extern {
     fn rt_init();
     fn rt_term();
     fn startMqttServer(useCache: bool);
+    fn setNewMessage(func: extern fn(*mut c_void, Span));
+    fn setDisconnect(func: extern fn(*mut c_void));
     fn newDlangSubscriber(connection: *mut c_void) -> *mut c_void;
     fn getWriteableBuffer(subscriber: *mut c_void) -> Span;
+
 }
 
 
-#[no_mangle]
-fn rust_new_message(context: *mut c_void, bytes: Span) {
+extern fn rust_new_message(context: *mut c_void, bytes: Span) {
     let socket = context as *mut mio::tcp::TcpStream;
     unsafe {
         let bytes = std::slice::from_raw_parts(bytes.ptr, bytes.size as usize);
@@ -39,14 +41,17 @@ fn rust_new_message(context: *mut c_void, bytes: Span) {
     }
 }
 
-#[no_mangle]
-fn rust_disconnect(context: *mut c_void) {
+extern fn rust_disconnect(context: *mut c_void) {
 }
 
 
 
 fn main() {
-    unsafe { rt_init(); }
+    unsafe {
+        rt_init();
+        setDisconnect(rust_disconnect);
+        setNewMessage(rust_new_message);
+    }
 
     let use_cache = std::env::args().len() == 1;
     unsafe { startMqttServer(use_cache); }

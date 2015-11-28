@@ -11,9 +11,16 @@ struct Span {
 }
 
 extern(C) {
-    void rust_new_message(void* context, in Span bytes);
-    void rust_disconnect(void* context);
+    void function(void* context, in Span bytes) rust_new_message;
+    void function(void* context) rust_disconnect;
 
+    void setNewMessage(void function(void* context, in Span bytes) func) {
+        rust_new_message = func;
+    }
+
+    void setDisconnect(void function(void* context) func) {
+        rust_disconnect = func;
+    }
 
     void startMqttServer(bool useCache) {
         GC.disable;
