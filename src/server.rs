@@ -68,7 +68,7 @@ pub struct Stream {
 
 impl Stream {
     pub fn new() -> Self {
-        Stream { buffer: vec![0; 1024 * 512], bytes_start: 0 }
+        Stream { buffer: vec![0; 1024 * 1024], bytes_start: 0 }
     }
 
     pub fn buffer(&mut self) -> &mut [u8] {

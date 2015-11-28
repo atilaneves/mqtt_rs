@@ -12,12 +12,21 @@ mod message;
 
 const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
+extern {
+    fn rt_init();
+    fn rt_term();
+}
+
 fn main() {
+    unsafe { rt_init(); }
+
     let address = "0.0.0.0:1883".parse().unwrap();
     let listener = TcpListener::bind(&address).expect(&format!("Could not bind to {}", address));
     let mut event_loop = mio::EventLoop::new().expect("Could not create MIO event loop");
     event_loop.register(&listener, MQTT_SERVER_TOKEN).expect("Could not register listener");
     event_loop.run(&mut MioHandler::new(listener, std::env::args().len() == 1)).expect("Could not run event loop");
+
+    unsafe { rt_term(); }
 }
 
 
@@ -70,7 +79,7 @@ impl mio::Handler for MioHandler {
                         //insertions per connection is to avoid borrowing problems.
                         //That way the mqtt stream and the connection have distinct lifetimes
                         //(though not really) and be passed as mutable borrow simultaneously
-                        //to connection_ready
+                        //to connection_ready_old
 
                         let token = self.connections
                             .insert_with(|_| Rc::new(RefCell::new(Connection::new(socket))))
@@ -96,7 +105,7 @@ impl mio::Handler for MioHandler {
             }
             _ => {
                 assert!(events.is_readable());
-                let still_connected = connection_ready(&mut self.server,
+                let still_connected = connection_ready_old(&mut self.server,
                                                        &mut self.mqtt_streams[token],
                                                        self.connections[token].clone());
                 if !still_connected {
@@ -111,9 +120,9 @@ impl mio::Handler for MioHandler {
     }
 }
 
-fn connection_ready(server: &mut server::Server<Connection>,
-                    stream: &mut server::Stream,
-                    connection: Rc<RefCell<Connection>>) -> bool {
+fn connection_ready_old(server: &mut server::Server<Connection>,
+                        stream: &mut server::Stream,
+                        connection: Rc<RefCell<Connection>>) -> bool {
     let connection = connection.clone();
     let read_result = connection.borrow_mut().read(stream.buffer());
 
