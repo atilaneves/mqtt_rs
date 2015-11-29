@@ -56,14 +56,14 @@ fn main() {
         setNewMessage(rust_new_message);
     }
 
-    let use_cache = std::env::args().len() == 1;
+    let use_cache = std::env::args().len() > 1;
     unsafe { startMqttServer(use_cache); }
 
     let address = "0.0.0.0:1883".parse().unwrap();
     let listener = TcpListener::bind(&address).expect(&format!("Could not bind to {}", address));
     let mut event_loop = mio::EventLoop::new().expect("Could not create MIO event loop");
     event_loop.register(&listener, MQTT_SERVER_TOKEN).expect("Could not register listener");
-    event_loop.run(&mut MioHandler::new(listener, std::env::args().len() == 1)).expect("Could not run event loop");
+    event_loop.run(&mut MioHandler::new(listener, use_cache)).expect("Could not run event loop");
 
     unsafe { rt_term(); }
 }
@@ -85,8 +85,8 @@ struct Connection {
 impl MioHandler {
     fn new(listener: TcpListener, use_cache: bool) -> Self {
 
-        if !use_cache {
-            println!("Disabling the cache");
+        if use_cache {
+            println!("Enabling the cache");
         }
 
         let max_conns = 1024 * 32;
