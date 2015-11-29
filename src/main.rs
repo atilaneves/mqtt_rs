@@ -17,7 +17,7 @@ const MQTT_SERVER_TOKEN: mio::Token = mio::Token(0);
 
 #[repr(C)]
 struct Span {
-    ptr: *const u8,
+    ptr: *mut u8,
     size: i64,
 }
 
@@ -29,7 +29,7 @@ extern {
     fn setDisconnect(func: extern fn(*mut c_void));
     fn newDlangSubscriber(connection: *mut c_void) -> *mut c_void;
     fn getWriteableBuffer(subscriber: *mut c_void) -> Span;
-
+    fn handleMessages(subscriber: *mut c_void, num_bytes_read: i64);
 }
 
 
@@ -42,6 +42,10 @@ extern fn rust_new_message(context: *mut c_void, bytes: Span) {
 }
 
 extern fn rust_disconnect(context: *mut c_void) {
+    let connection = context as *mut Connection;
+    unsafe {
+        (*connection).connected = false;
+    }
 }
 
 
@@ -179,7 +183,28 @@ fn connection_ready_old(server: &mut server::Server<Connection>,
     }
 }
 
-fn connection_ready() {
+fn connection_ready(connection: Rc<RefCell<Connection>>) -> bool {
+    let mut connection = connection.borrow_mut();
+    unsafe {
+        let span = getWriteableBuffer(connection.dlang_subscriber);
+        let mut buffer = std::slice::from_raw_parts_mut(span.ptr, span.size as usize);
+        let read_result = connection.read(&mut buffer);
+
+        match read_result {
+            Ok(length) => {
+                if length >= span.size as usize {
+                    panic!(format!("Too many bytes ({}) for puny stream buffer ({})",
+                                   length, span.size));
+                }
+                handleMessages(connection.dlang_subscriber, length as i64);
+
+            }
+            _ => {
+                println!("Error reading bytes from stream");
+            }
+        }
+    }
+    connection.connected
 }
 
 
