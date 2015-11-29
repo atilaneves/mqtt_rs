@@ -2,6 +2,7 @@ use std::process::Command;
 
 fn main() {
     Command::new("dmd").args(&["-lib", "-Id", "-fPIC",
+                               "-O", "-release",
                                "d/mqttd/broker.d", "d/mqttd/server.d","d/mqttd/stream.d","d/mqttd/message.d",
                                "d/cerealed/cereal.d", "d/cerealed/package.d", "d/cerealed/cerealiser.d", "d/cerealed/decerealiser.d",
                                "d/cerealed/attrs.d", "d/cerealed/scopebuffer.d", "d/cerealed/range.d",
