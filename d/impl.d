@@ -2,6 +2,7 @@ import mqttd.server;
 import mqttd.stream;
 import std.typecons;
 import std.string;
+import std.stdio;
 import core.memory;
 
 

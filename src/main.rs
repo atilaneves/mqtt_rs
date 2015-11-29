@@ -34,10 +34,9 @@ extern {
 
 
 extern fn rust_new_message(context: *mut c_void, bytes: Span) {
-    let socket = context as *mut mio::tcp::TcpStream;
+    let connection = context as *mut Connection;
     unsafe {
-        let bytes = std::slice::from_raw_parts(bytes.ptr, bytes.size as usize);
-        (*socket).write_all(bytes).expect("Error writing to socket");
+        (*connection).write(bytes);
     }
 }
 
@@ -135,6 +134,9 @@ impl mio::Handler for MioHandler {
                             token,
                             mio::EventSet::readable(),
                             mio::PollOpt::edge()).expect("Could not register connection with event loop");
+
+                        connection.borrow_mut().set_dlang_subscriber();
+
                     }
                     Ok(None) => {
                         println!("The server socket wasn't actually ready");
@@ -147,9 +149,7 @@ impl mio::Handler for MioHandler {
             }
             _ => {
                 assert!(events.is_readable());
-                let still_connected = connection_ready_old(&mut self.server,
-                                                           &mut self.mqtt_streams[token],
-                                                           self.connections[token].clone());
+                let still_connected = connection_ready(self.connections[token].clone());
                 if !still_connected {
                     event_loop.deregister(&self.connections[token].borrow().socket)
                         .expect("Could not deregister connection with event loop");
@@ -210,15 +210,27 @@ fn connection_ready(connection: Rc<RefCell<Connection>>) -> bool {
 
 impl Connection {
     fn new(socket: mio::tcp::TcpStream) -> Self {
+        Connection { socket: socket, connected: true, dlang_subscriber: std::ptr::null_mut()}
+    }
+
+    fn set_dlang_subscriber(&mut self) {
+        let ptr = self as *mut Connection;
+        let ptr = ptr as *mut c_void;
+
         unsafe {
-            let ptr = &socket as *const mio::tcp::TcpStream;
-            let ptr = ptr as *mut c_void;
-            Connection { socket: socket, connected: true, dlang_subscriber: newDlangSubscriber(ptr) }
+            self.dlang_subscriber = newDlangSubscriber(ptr);
         }
     }
 
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.socket.read(buffer)
+    }
+
+    fn write(&mut self, bytes: Span) {
+        unsafe {
+            let bytes = std::slice::from_raw_parts(bytes.ptr, bytes.size as usize);
+            self.socket.write_all(bytes).expect("Connection::write error");
+        }
     }
 }
 
